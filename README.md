@@ -7,6 +7,7 @@ This repository packages a small skill suite for maintaining requirement continu
 - `using-dev-assets` — entry router for Git-repository development conversations
 - `dev-assets-setup` — initialize `.dev-assets/<branch>/` and collect reusable requirement materials
 - `dev-assets-context` — recover and refresh the current branch's saved development assets before coding
+- `dev-assets-update` — actively add or correct requirement context in the current branch's asset files
 - `dev-assets-sync` — treat commit-related moments as checkpoints and sync branch assets
 
 ## Install with `npx skills`
@@ -36,6 +37,7 @@ skills/
   using-dev-assets/
   dev-assets-setup/
   dev-assets-context/
+  dev-assets-update/
   dev-assets-sync/
 lib/
   dev_asset_common.py
@@ -46,5 +48,6 @@ scripts/
 ## Notes
 
 - The skills use `.dev-assets/<branch>/` as the branch-local asset directory.
+- `dev-assets-update` is the manual ingestion entry for cases where the user proactively provides new requirement context mid-stream.
 - `npx skills` does not need `scripts/install_suite.py`; the repository already follows standard skill discovery rules.
 - `scripts/install_suite.py` remains useful for local symlink-based installs during development.

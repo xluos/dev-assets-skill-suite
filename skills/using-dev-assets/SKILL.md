@@ -5,7 +5,7 @@ description: Use when starting any Git-repository development conversation, befo
 
 # Using Dev Assets
 
-这是开发资产套件的总入口 skill。它不直接沉淀资料，而是决定在当前对话起点是否应该先走 `dev-assets-context`、`dev-assets-setup` 或 `dev-assets-sync`。
+这是开发资产套件的总入口 skill。它不直接沉淀资料，而是决定在当前对话起点是否应该先走 `dev-assets-context`、`dev-assets-setup`、`dev-assets-update` 或 `dev-assets-sync`。
 
 **Announce at start:** `我先检查当前对话是否应该进入 dev-asset 套件。`
 
@@ -19,6 +19,7 @@ description: Use when starting any Git-repository development conversation, befo
 - 即将开始读代码、改代码、排查问题
 - 用户提到“继续这个需求”“看下这个分支”“接着做”“开始处理”
 - 用户提到提交、commit、stage、commit message
+- 用户提到“记一下”“补充进去”“更新到资产里”“把这个结论存起来”
 
 ## Routing
 
@@ -50,6 +51,15 @@ description: Use when starting any Git-repository development conversation, befo
 
 把它视为提交检查点，先同步工作区，再记录提交。
 
+### Route to `dev-assets-update`
+
+当用户明确想把新的背景、结论、约束、风险、测试口径、链接或方案补进分支资产时：
+
+- 定位当前分支资产目录
+- 选择最合适的目标文件
+- 把本轮新信息整理后写入对应资产
+- 刷新 `manifest.json` 的更新时间
+
 ## Workflow
 
 ### Step 1: Check whether this is Git-repository development work
@@ -58,10 +68,11 @@ description: Use when starting any Git-repository development conversation, befo
 
 如果是，继续 Step 2。
 
-### Step 2: Decide whether this is a context, setup, or sync moment
+### Step 2: Decide whether this is a context, setup, update, or sync moment
 
 - 开始继续已有分支工作 → `dev-assets-context`
 - 新分支第一次开始，或缺少资产目录 → `dev-assets-setup`
+- 主动补充或修正资产内容 → `dev-assets-update`
 - 提交相关动作 → `dev-assets-sync`
 
 ### Step 3: Invoke the routed skill before proceeding

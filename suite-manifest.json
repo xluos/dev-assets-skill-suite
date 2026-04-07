@@ -4,6 +4,7 @@
     "using-dev-assets",
     "dev-assets-setup",
     "dev-assets-context",
+    "dev-assets-update",
     "dev-assets-sync"
   ],
   "legacy_skills": [
