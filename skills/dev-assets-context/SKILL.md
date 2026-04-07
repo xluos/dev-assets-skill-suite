@@ -35,6 +35,8 @@ python3 /absolute/path/to/dev-assets-context/scripts/dev_asset_context.py sync -
 
 ### Step 3: Read in layers, not all at once
 
+`show` 和 `sync` 只负责定位目录、暴露缺口、刷新 Git 自动区；真正读取 `overview.md` / `development.md` 正文并纳入上下文，是 agent 的后续动作。
+
 默认先读：
 
 - `overview.md`

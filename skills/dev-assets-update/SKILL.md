@@ -5,11 +5,11 @@ description: Use when the user wants to actively add, correct, summarize, or per
 
 # Dev Assets Update
 
-把用户刚刚补充的新信息，沉淀到当前分支的开发资产里，而不是只留在对话中。
+把用户刚刚补充的新信息，结合当前会话里已经形成的上下文，一起沉淀到当前分支的开发资产里，而不是只留在对话中。
 
-**Announce at start:** `我先用 dev-assets-update 把这次补充的信息落到当前分支的开发资产里。`
+**Announce at start:** `我先用 dev-assets-update 把这次补充的信息和当前会话里的相关结论一起落到当前分支的开发资产里。`
 
-**Core principle:** 新获得的需求背景、评审结论、技术约束、测试口径、风险判断，只要后续还会复用，就应该及时归档到对应资产文件。
+**Core principle:** `update` 不是纯脚本执行；它应该先基于当前会话和用户这次输入做整理，再把可复用内容写入对应资产文件。
 
 ## Trigger Intent
 
@@ -54,16 +54,32 @@ python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py show --r
 python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py suggest-target --kind <kind>
 ```
 
-### Step 3: Update the file cleanly
+### Step 3: Summarize the session and the latest user input, then write
 
-- 先保留原有结构
-- 优先追加到最相关章节
-- 必要时补一个新小节，但不要把文档改成流水账
+不要把 `update` 理解成纯脚本执行。先基于：
+
+- 当前会话里已经形成的事实
+- 用户这次明确补充的输入
+- 你刚刚做出的整理与归纳
+
+提炼出后续可复用的内容，再运行：
+
+```bash
+python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py write --repo <repo-path> --kind <kind> --title <section-title> --summary-file <summary-file> --user-input-file <user-input-file>
+```
+
+规则：
+
+- `summary-file` 存放你基于当前会话整理后的摘要
+- `user-input-file` 存放用户这次原始补充内容，便于保留上下文来源
+- 脚本会把“用户这次输入 + 基于当前会话整理”合并成一个区块后写入目标文件，并刷新 `manifest.json`
+- 简单场景也可继续使用 `--content` / `--content-file`，但优先使用会话驱动写入
+- 如果需要同时写多个目标文件，优先选择最主要的 `kind`，其余由脚本按内置映射同步追加
 - 如果内容会影响总体认知，同步更新 `overview.md`
 
 ### Step 4: Refresh manifest metadata
 
-写完后运行：
+`write` 已经会刷新 `manifest.json`。只有在本轮没有新增正文、只是补更新时间时，才单独运行：
 
 ```bash
 python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py touch-manifest --repo <repo-path>
@@ -74,7 +90,14 @@ python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py touch-ma
 ```bash
 python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py show --repo <repo-path>
 python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py suggest-target --kind <kind>
+python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py write --repo <repo-path> --kind <kind> --title <section-title> --summary-file <summary-file> --user-input-file <user-input-file>
 python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py touch-manifest --repo <repo-path>
+```
+
+也可选：
+
+```bash
+python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py write --repo <repo-path> --kind <kind> --title <section-title> --content-file <content-file>
 ```
 
 `kind` 可用值：
@@ -104,8 +127,8 @@ python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py touch-ma
 
 - 把“主动补充资料”视为独立触发场景
 - 先定位资产目录，再落盘
-- 把信息写进最合适的文件，而不是一股脑塞到 `development.md`
-- 写完后刷新 `manifest.json` 的更新时间
+- 先基于当前会话和用户这次输入做整理，再调用 `write` 写进最合适的文件，而不是一股脑塞到 `development.md`
+- 写完后确认 `manifest.json` 已刷新更新时间
 
 **Never:**
 

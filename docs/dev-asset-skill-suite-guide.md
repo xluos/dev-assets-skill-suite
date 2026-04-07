@@ -72,18 +72,13 @@
 - 测试用例
 - 相关链接、限制条件、背景摘要
 
-它的重点不是“建目录”，而是“把后续要反复引用的材料第一次收进来”。
+它的重点不是“建目录”，而是“先建槽位，再由 skill 继续收资料，并通过 `dev-assets-update` 把资料写入对应文件”。
 
 ### `dev-assets-context`
 
 在继续开发前恢复当前分支上下文。
 
-它会：
-
-- 定位当前分支资产目录
-- 刷新 `development.md` 的 Git 自动区
-- 默认先读 `overview.md` 和 `development.md`
-- 按需补读 `prd.md`、`review-notes.md`、`frontend-design.md`、`backend-design.md`、`test-cases.md`
+它会先用脚本定位资产目录、刷新 `development.md` 的 Git 自动区，再由 agent 分层读取 `overview.md`、`development.md` 和按需专项文档。
 
 它解决的问题是：开始工作前，先把“这个分支已经知道什么、还缺什么”搞清楚，而不是直接冲进代码。
 
@@ -91,21 +86,40 @@
 
 用于主动补充、修正、沉淀新信息。
 
-当用户在会话中补充了新的背景、结论、约束、风险、测试口径、链接或方案时，这个 skill 会把信息整理后写入最合适的资产文件，而不是只留在聊天记录里。
+当用户在会话中补充了新的背景、结论、约束、风险、测试口径、链接或方案时，这个 skill 会先结合当前会话和这次输入整理出可复用摘要，再通过 `dev_asset_update.py write` 写入最合适的资产文件，而不是只留在聊天记录里。
 
 它解决的问题是：需求推进过程中新增的信息，不能只靠初始化一次收集完，必须支持中途持续沉淀。
 
 ### `dev-assets-sync`
 
-用于提交相关检查点的同步。
+用于提交相关检查点，或在 agent 判断当前已经出现值得沉淀的改动与阶段性结果时，自动同步。
 
-当用户提到提交、commit、stage、commit message 时，这个 skill 会：
+当用户提到提交、commit、stage、commit message，或者 agent 判断当前已经形成了值得复用的改动、结论、风险、实现备注时，这个 skill 会：
 
-- 刷新 `development.md`
+- 先总结当前会话里值得复用的内容
+- 把改动、结论、风险、实现备注写入最合适的资产文件
 - 更新 `manifest.json`
 - 在有新提交时把最新 commit 写入 `commits.md`
 
-它解决的问题是：提交不只是 Git 动作，也是开发资产的自然归档时机。
+它解决的问题是：提交不只是 Git 动作，也是开发资产的自然归档时机。而且很多阶段性产出即使还没到 commit，也值得无感自动沉淀。这里的“同步”首先是会话沉淀，其次才是 Git checkpoint。
+
+如果不想依赖 agent 在会话里识别“提交”语义，也可以给目标仓库安装 Git hooks：
+
+```bash
+python3 /absolute/path/to/dev-assets-sync/scripts/dev_asset_sync.py install-hooks --repo <repo-path> --enable-pre-commit
+```
+
+安装后：
+
+- `post-commit` 自动执行 `record-head`
+- `pre-commit`（可选）自动执行 `sync-working-tree`
+- hook 采用非阻塞策略，同步失败不会拦住提交
+
+但要注意：
+
+- hook 只负责 Git 侧 checkpoint
+- hook 不能替代 agent 在当前会话里的内容总结与归档
+- 完整的 `dev-assets-sync` 仍应先做会话摘要，再做提交记录
 
 ## 推荐使用流程
 
@@ -116,7 +130,7 @@
 3. 路由到 `dev-assets-setup`
 4. 初始化 `.dev-assets/<branch>/`
 5. 向用户收集 PRD、评审、前后端方案、测试用例等信息
-6. 把资料整理写入对应文件
+6. 先结合当前会话和用户输入整理资料，再通过 `dev-assets-update` 写入对应文件
 
 ### 流程 2：继续已有分支工作
 
@@ -131,17 +145,17 @@
 
 1. 用户补充了新的背景、约束、评审结论、测试口径或方案
 2. `using-dev-assets` 路由到 `dev-assets-update`
-3. 选择最合适的目标文件
-4. 把信息整理成后续可复用的表达并写入
+3. 先用 `dev-assets-update` 选择最合适的目标文件
+4. 把信息整理成后续可复用的表达并通过 `write` 写入
 5. 刷新 `manifest.json`
 
-### 流程 4：提交前后同步
+### 流程 4：提交前后或阶段性里程碑同步
 
-1. 用户提到提交、生成 commit message、准备 stage 或提交后补记录
+1. 用户提到提交、生成 commit message、准备 stage 或提交后补记录；或者 agent 判断当前已经出现值得记录的阶段性产出
 2. `using-dev-assets` 路由到 `dev-assets-sync`
-3. 先同步 working tree
-4. 有新提交时记录到 `commits.md`
-5. 必要时把关键结论补到 `decision-log.md`
+3. 先总结本轮会话中值得沉淀的改动、结论、风险和后续项
+4. 把这些内容写入对应资产文件
+5. 有新提交时记录到 `commits.md`
 
 ## 这套设计的边界
 

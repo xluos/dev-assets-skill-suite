@@ -1,4 +1,4 @@
 interface:
   display_name: "Dev Assets Sync"
-  short_description: "在提交相关对话里同步当前分支开发资产并记录 commit"
-  default_prompt: "Use $dev-assets-sync to treat this commit-related moment as a checkpoint: sync the branch assets, then record the latest commit if one exists."
+  short_description: "在提交相关对话里先沉淀当前会话内容，再同步分支资产并记录 commit"
+  default_prompt: "Use $dev-assets-sync to treat this commit-related moment as a checkpoint: first summarize the current session into reusable project facts and write them into the right asset files, then record the latest commit if one exists."
