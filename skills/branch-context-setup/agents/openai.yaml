@@ -1,4 +1,0 @@
-interface:
-  display_name: "Branch Context Setup"
-  short_description: "初始化当前仓库的分支级需求上下文目录与模板"
-  default_prompt: "Use $branch-context-setup to initialize branch-scoped context storage for the current Git repository."

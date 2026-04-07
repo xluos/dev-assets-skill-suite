@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dev Asset Setup"
+  short_description: "初始化当前分支的开发资产目录并主动索要可复用资料"
+  default_prompt: "Use $dev-asset-setup to initialize a branch-scoped development asset directory for the current Git repository."

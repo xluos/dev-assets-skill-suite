@@ -1,4 +1,0 @@
-interface:
-  display_name: "Branch Context"
-  short_description: "读取并同步当前 Git 分支的需求上下文与改动快照"
-  default_prompt: "Use $branch-context to recover and sync branch-scoped requirement context in the current Git repository."

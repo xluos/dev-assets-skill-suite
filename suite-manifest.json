@@ -1,0 +1,12 @@
+{
+  "suite_name": "dev-asset-skill-suite",
+  "skills": [
+    "dev-asset-setup",
+    "dev-asset-context",
+    "dev-asset-sync"
+  ],
+  "legacy_skills": [
+    "branch-context",
+    "branch-context-setup"
+  ]
+}
