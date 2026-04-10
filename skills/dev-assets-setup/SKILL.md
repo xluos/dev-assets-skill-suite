@@ -1,29 +1,29 @@
 ---
 name: dev-assets-setup
-description: Use when a branch starts a new requirement stream or when the current branch has no development asset directory yet, and Codex should initialize a branch-named asset directory, then actively collect reusable materials such as PRD, review notes, technical plans, test cases, links, and branch summary.
+description: Use when a branch starts a new requirement stream or when the current branch has no development asset directory yet, and Codex should initialize a branch-named memory directory, then collect the branch's current summary and source-document entry points.
 ---
 
 # Dev Assets Setup
 
-为当前 Git 分支初始化一个“开发资产目录”，并在初始化后主动向用户索要后续会复用的资料。
+为当前 Git 分支初始化一个“开发记忆目录”，并在初始化后主动向用户收集最小但关键的资料。
 
-**Announce at start:** `我先用 dev-assets-setup 为当前分支初始化开发资产目录，并补齐核心资料槽位。`
+**Announce at start:** 用一句简短的话说明将先初始化当前分支记忆目录并补齐关键入口。
 
-**Core principle:** 初始化负责建目录和模板槽位；资料 intake 与落盘由 skill 继续推进，必要时调用 `dev-assets-update` 完成写入。
+**Core principle:** 初始化负责建记忆骨架；资料 intake 的重点是当前摘要和源资料入口，不是复制一整套 PRD / 评审 / 方案文件。
 
 ## Workflow
 
 1. 确认当前目录位于 Git 仓库内。
 2. 运行 `scripts/init_dev_assets.py --repo <repo-path>` 初始化当前分支目录。
 3. 告诉用户创建出的目录和资产文件清单。
-5. 主动索要缺失资料，优先顺序：
-   - PRD / 需求文档
-   - 评审记录
-   - 前端方案
-   - 后端方案
-   - 测试用例
-   - 相关链接与限制条件
-6. 收到资料后，先结合当前会话和用户刚给的输入整理成可复用内容，再调用 `dev-assets-update` 的 `write` 命令写入对应文件，不要把所有内容都塞进一个文件。
+4. 主动索要缺失资料，优先顺序：
+   - 当前目标
+   - 范围边界
+   - 当前阶段
+   - 关键约束
+   - 已知风险或阻塞
+   - 源文档 / 链接 / 代码入口
+5. 收到资料后，优先调用 `dev-assets-update` 重写 `overview / development / context / sources` 中最合适的 section。
 
 ## Command
 
@@ -45,15 +45,11 @@ python3 /absolute/path/to/dev-assets-setup/scripts/init_dev_assets.py --repo <re
 关键文件：
 
 - `overview.md`
-- `prd.md`
-- `review-notes.md`
-- `frontend-design.md`
-- `backend-design.md`
-- `test-cases.md`
 - `development.md`
-- `decision-log.md`
-- `commits.md`
-- `artifacts/`
+- `context.md`
+- `sources.md`
+- `manifest.json`
+- `artifacts/history/`
 
 脚本还会：
 
@@ -62,22 +58,22 @@ python3 /absolute/path/to/dev-assets-setup/scripts/init_dev_assets.py --repo <re
 
 ## Intake Rules
 
-- 主动问用户要资料，不要只让用户自己回忆模板字段。
-- 缺资料时优先问“你有文档/链接吗”，不要直接让用户重新手打一遍。
-- 如果用户只给零散信息，先整理进正确文件，再在 `overview.md` 更新摘要。
-- 不要假设 PRD、方案、测试用例一定同时存在；缺什么就标记什么。
+- 主动问用户要源文档或链接，不要要求用户把整份文档重新手打一遍。
+- `.dev-assets/` 只保留当前有效记忆，不复制完整正文。
+- 如果用户只给零散信息，先整理成当前有效摘要，再写入对应文件。
+- 需要具体实现细节时，优先把入口写进 `sources.md`。
 
 ## Always / Never
 
 **Always:**
 
 - 把目录按分支名初始化
-- 初始化后立即告诉用户缺哪些核心资料
-- 优先收文档、链接、现成记录，而不是要求用户重新组织一遍
-- 将不同类型资料分散到对应文件，而不是堆在 `overview.md`
+- 初始化后立即告诉用户缺哪些关键入口信息
+- 优先收“当前摘要 + 源资料入口”
+- 让 `.dev-assets/` 成为记忆入口，而不是文档镜像
 
 **Never:**
 
 - 只建目录不做资料 intake
-- 把评审记录、技术方案、测试口径混写在一个文件里
+- 继续复制 `prd / review / frontend / backend / test` 一整套正文
 - 假装已经理解需求，只因为目录初始化完成了

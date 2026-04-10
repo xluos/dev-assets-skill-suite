@@ -6,72 +6,100 @@ import sys
 from pathlib import Path
 
 from dev_asset_common import (
-    append_development_section,
-    append_markdown_section,
     asset_paths,
     get_branch_paths,
     list_missing_docs,
     now_iso,
     read_json,
+    upsert_development_section,
+    upsert_markdown_section,
     write_json,
 )
 
 
-SECTION_TITLE_MAP = {
-    "overview": "补充记录",
-    "prd": "需求补充",
-    "review_notes": "评审补充",
-    "frontend_design": "前端补充",
-    "backend_design": "后端补充",
-    "test_cases": "测试补充",
-    "development": "开发补充",
-    "decision_log": "决策补充",
-}
-
 KIND_MAP = {
     "summary": {
-        "targets": ["overview", "development"],
-        "reason": "高层摘要变化通常要同步到 overview，必要时在 development 留当前实现说明。",
+        "targets": [
+            {"file": "overview", "section": "当前摘要"},
+            {"file": "context", "section": "当前有效上下文"},
+        ],
+        "reason": "高层摘要进入 overview，稍详细的可复用背景进入 context。",
     },
-    "prd": {
-        "targets": ["prd", "overview"],
-        "reason": "需求背景、目标范围、验收口径优先进入 prd，必要时回写概览。",
+    "overview": {
+        "targets": [{"file": "overview", "section": "当前摘要"}],
+        "reason": "直接改写 overview 的当前摘要。",
     },
-    "review": {
-        "targets": ["review_notes", "decision_log"],
-        "reason": "评审结论与争议点写入 review-notes，长期有效的结论可同步到 decision-log。",
+    "scope": {
+        "targets": [{"file": "overview", "section": "范围边界"}],
+        "reason": "范围边界应直接覆盖 overview，而不是继续追加历史。",
     },
-    "frontend": {
-        "targets": ["frontend_design", "development"],
-        "reason": "前端实现方案优先进入 frontend-design，当前阶段补充可落到 development。",
-    },
-    "backend": {
-        "targets": ["backend_design", "development"],
-        "reason": "后端接口与兼容性优先进入 backend-design，当前阶段说明可补到 development。",
-    },
-    "test": {
-        "targets": ["test_cases", "overview"],
-        "reason": "测试口径和回归范围进入 test-cases，若影响整体验收认知可同步到 overview。",
-    },
-    "development": {
-        "targets": ["development"],
-        "reason": "实现备注、当前需求点、临时阻塞优先写入 development。",
-    },
-    "decision": {
-        "targets": ["decision_log", "overview"],
-        "reason": "会被反复引用的结论或取舍应进入 decision-log，必要时更新概览。",
-    },
-    "risk": {
-        "targets": ["development", "decision_log"],
-        "reason": "当前阻塞和风险先写 development，若形成明确约束再写 decision-log。",
+    "stage": {
+        "targets": [{"file": "overview", "section": "当前阶段"}],
+        "reason": "当前阶段是冷启动先看的信息，保持短且始终最新。",
     },
     "constraint": {
-        "targets": ["decision_log", "backend_design", "frontend_design"],
-        "reason": "明确限制条件优先写 decision-log，再按影响范围补到前后端方案。",
+        "targets": [
+            {"file": "overview", "section": "关键约束"},
+            {"file": "context", "section": "关键决策与原因"},
+        ],
+        "reason": "强约束既要让冷启动能看到，也要在 context 里保留原因。",
+    },
+    "development": {
+        "targets": [{"file": "development", "section": "当前进展"}],
+        "reason": "当前进展是工作态信息，应直接改写 development。",
+    },
+    "risk": {
+        "targets": [
+            {"file": "development", "section": "阻塞与注意点"},
+            {"file": "context", "section": "后续继续前要注意"},
+        ],
+        "reason": "当前风险先进入 development，长期注意点同步到 context。",
+    },
+    "next": {
+        "targets": [{"file": "development", "section": "下一步"}],
+        "reason": "下一步是当前工作态信息，保持覆盖式更新。",
+    },
+    "context": {
+        "targets": [{"file": "context", "section": "当前有效上下文"}],
+        "reason": "稍详细但仍有效的分支记忆统一进入 context。",
+    },
+    "decision": {
+        "targets": [{"file": "context", "section": "关键决策与原因"}],
+        "reason": "为什么这么做比做了什么更适合留在 context。",
+    },
+    "source": {
+        "targets": [{"file": "sources", "section": "优先阅读"}],
+        "reason": "源文档入口统一收敛到 sources。",
     },
     "link": {
-        "targets": ["overview", "prd", "review_notes", "frontend_design", "backend_design", "test_cases"],
-        "reason": "链接应放到与内容最相关的文档，不建议集中堆放在单独文件中。",
+        "targets": [{"file": "sources", "section": "优先阅读"}],
+        "reason": "链接和文档入口统一收敛到 sources。",
+    },
+    "prd": {
+        "targets": [
+            {"file": "context", "section": "当前有效上下文"},
+            {"file": "sources", "section": "优先阅读"},
+        ],
+        "reason": "PRD 正文应回源文档，分支资产只保留摘要和入口。",
+    },
+    "review": {
+        "targets": [
+            {"file": "context", "section": "关键决策与原因"},
+            {"file": "sources", "section": "优先阅读"},
+        ],
+        "reason": "评审结论保留为当前有效结论，并记录源资料入口。",
+    },
+    "frontend": {
+        "targets": [{"file": "context", "section": "当前有效上下文"}],
+        "reason": "前端细节应回源方案，分支资产只保留当前有效摘要。",
+    },
+    "backend": {
+        "targets": [{"file": "context", "section": "当前有效上下文"}],
+        "reason": "后端细节应回源方案，分支资产只保留当前有效摘要。",
+    },
+    "test": {
+        "targets": [{"file": "context", "section": "后续继续前要注意"}],
+        "reason": "测试口径主要作为后续继续时的注意项保留。",
     },
 }
 
@@ -121,11 +149,12 @@ def resolve_targets(kind):
     return payload["targets"]
 
 
-def append_to_target(path, target_key, title, content):
-    if target_key == "development":
-        append_development_section(path, title, content)
+def write_target(paths, target_file, section_title, content):
+    path = paths[target_file]
+    if target_file == "development":
+        upsert_development_section(path, section_title, content)
     else:
-        append_markdown_section(path, title, content)
+        upsert_markdown_section(path, section_title, content)
 
 
 def command_show(args):
@@ -171,13 +200,13 @@ def command_write(args):
     kind = args.kind.lower()
     targets = resolve_targets(kind)
     paths = asset_paths(branch_dir)
-    title = (args.title or SECTION_TITLE_MAP.get(targets[0]) or "补充记录").strip()
     content, update_mode = load_content(args)
 
     touched = []
-    for target_key in targets:
-        append_to_target(paths[target_key], target_key, title, content)
-        touched.append(paths[target_key].name)
+    for target in targets:
+        section_title = (args.title or target["section"]).strip()
+        write_target(paths, target["file"], section_title, content)
+        touched.append({"file": paths[target["file"]].name, "section": section_title})
 
     manifest = read_json(paths["manifest"])
     manifest.update(
@@ -188,8 +217,8 @@ def command_write(args):
             "context_dir": resolved_context_dir,
             "updated_at": now_iso(),
             "last_update_kind": kind,
-            "last_update_title": title,
             "last_update_mode": update_mode,
+            "last_update_targets": touched,
         }
     )
     write_json(paths["manifest"], manifest)
@@ -204,8 +233,7 @@ def command_write(args):
                 "mode": "write",
                 "update_mode": update_mode,
                 "kind": kind,
-                "title": title,
-                "touched_files": touched,
+                "touched_targets": touched,
                 "updated_at": manifest["updated_at"],
             },
             ensure_ascii=False,
@@ -265,10 +293,10 @@ def main():
     write.add_argument("--repo", default=".", help="Path inside the target Git repository")
     write.add_argument("--context-dir", help="Repository-local storage root")
     write.add_argument("--branch", help="Branch name. Defaults to the current checked-out branch")
-    write.add_argument("--kind", required=True, help="Update kind to classify")
-    write.add_argument("--title", help="Section title to append")
-    write.add_argument("--content", help="Inline markdown content to append")
-    write.add_argument("--content-file", help="Markdown content file to append")
+    write.add_argument("--kind", required=True, help="Kind of update to write")
+    write.add_argument("--title", help="Override the default section title")
+    write.add_argument("--content", help="Inline markdown content to store")
+    write.add_argument("--content-file", help="File containing markdown content to store")
     write.add_argument("--summary", help="Session-derived summary to store")
     write.add_argument("--summary-file", help="File containing a session-derived summary")
     write.add_argument("--user-input", help="Latest user input to store alongside the summary")

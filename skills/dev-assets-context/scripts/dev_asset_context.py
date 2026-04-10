@@ -54,7 +54,10 @@ def command_sync(args):
             "branch_key": branch_key,
             "context_dir": resolved_context_dir,
             "updated_at": facts["updated_at"],
+            "last_seen_head": facts["last_seen_head"],
+            "default_base": facts["default_base"],
             "scope_summary": facts["scope_summary"],
+            "focus_areas": facts["focus_areas"],
         }
     )
     write_json(paths["manifest"], manifest)
@@ -65,6 +68,7 @@ def command_sync(args):
         "context_dir": resolved_context_dir,
         "branch_dir": str(branch_dir),
         "missing_or_placeholder": list_missing_docs(paths),
+        "focus_areas": facts["focus_areas"],
         "files_considered": len(
             set(
                 facts["working_tree_files"]

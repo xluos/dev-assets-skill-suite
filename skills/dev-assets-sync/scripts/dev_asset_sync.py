@@ -6,17 +6,17 @@ import sys
 from pathlib import Path
 
 from dev_asset_common import (
-    append_development_section,
-    append_markdown_section,
-    append_commit_record,
     asset_paths,
     collect_git_facts,
     detect_repo_root,
     get_branch_paths,
-    get_commit_payload,
     get_head_commit,
+    now_iso,
     read_json,
+    render_bullets,
     sync_development,
+    upsert_development_section,
+    upsert_markdown_section,
     write_json,
 )
 
@@ -64,10 +64,6 @@ def install_hook(hook_path, block):
     hook_path.chmod(0o755)
 
 
-def bullets(items):
-    return "\n".join(f"- {item}" for item in normalize_items(items))
-
-
 def normalize_items(items):
     if items is None:
         return []
@@ -75,6 +71,10 @@ def normalize_items(items):
         stripped = items.strip()
         return [stripped] if stripped else []
     return [str(item).strip() for item in items if str(item).strip()]
+
+
+def bullets(items, empty_text="- 待补充", wrap_code=False):
+    return render_bullets(normalize_items(items), empty_text=empty_text, wrap_code=wrap_code)
 
 
 def decision_body(item):
@@ -94,6 +94,80 @@ def load_session_payload(args):
     raise RuntimeError("one of --summary-json or --summary-file is required")
 
 
+def build_context_body(payload):
+    blocks = []
+    mapping = [
+        ("当前记忆", payload.get("memory") or payload.get("context_updates")),
+        ("评审相关", payload.get("review_notes")),
+        ("前端相关", payload.get("frontend_updates")),
+        ("后端相关", payload.get("backend_updates")),
+        ("测试相关", payload.get("test_updates")),
+    ]
+    for title, items in mapping:
+        normalized = normalize_items(items)
+        if normalized:
+            blocks.append(f"### {title}\n\n{bullets(normalized)}")
+    return "\n\n".join(blocks).strip()
+
+
+def build_sources_history_body(facts):
+    history_cmd = (
+        f"`git log --oneline {facts['default_base']}..HEAD`"
+        if facts["default_base"]
+        else "`git log --oneline --decorate -n 20`"
+    )
+    head = facts["last_seen_head"] or "HEAD"
+    return (
+        f"- 查看本分支提交历史：{history_cmd}\n"
+        "- 查看当前工作区改动：`git diff --name-only`\n"
+        f"- 当前 HEAD：`{head}`"
+    )
+
+
+def sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts, extra=None):
+    manifest = read_json(paths["manifest"])
+    manifest.update(
+        {
+            "repo_root": str(repo_root),
+            "branch": branch_name,
+            "branch_key": branch_key,
+            "context_dir": context_dir,
+            "updated_at": facts["updated_at"],
+            "last_seen_head": facts["last_seen_head"],
+            "default_base": facts["default_base"],
+            "scope_summary": facts["scope_summary"],
+            "focus_areas": facts["focus_areas"],
+        }
+    )
+    if extra:
+        manifest.update(extra)
+    write_json(paths["manifest"], manifest)
+    return manifest
+
+
+def touch_manifest(paths, repo_root, branch_name, branch_key, context_dir, extra=None):
+    extra_payload = dict(extra or {})
+    manifest = read_json(paths["manifest"])
+    manifest.update(
+        {
+            "repo_root": str(repo_root),
+            "branch": branch_name,
+            "branch_key": branch_key,
+            "context_dir": context_dir,
+            "updated_at": extra_payload.pop("updated_at", now_iso()),
+        }
+    )
+    if extra_payload:
+        manifest.update(extra_payload)
+    write_json(paths["manifest"], manifest)
+    return manifest
+
+
+def refresh_git_derived_views(paths, facts):
+    sync_development(paths, facts)
+    upsert_markdown_section(paths["sources"], "提交与代码历史", build_sources_history_body(facts))
+
+
 def command_record_session(args):
     payload = load_session_payload(args)
     repo_root, branch_name, branch_key, context_dir, branch_dir = get_branch_paths(
@@ -103,68 +177,59 @@ def command_record_session(args):
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
     paths = asset_paths(branch_dir)
-    facts = collect_git_facts(repo_root, branch_name, context_dir)
-    sync_development(paths, facts)
-
-    title = payload.get("title") or f"会话同步 {facts['updated_at'][:10]}"
+    title = payload.get("title") or "提交同步"
     touched = []
 
-    overview_items = payload.get("overview_summary") or []
+    overview_items = normalize_items(payload.get("overview_summary"))
     if overview_items:
-        append_markdown_section(paths["overview"], title, bullets(overview_items))
-        touched.append("overview.md")
+        upsert_markdown_section(paths["overview"], "当前摘要", bullets(overview_items))
+        touched.append({"file": "overview.md", "section": "当前摘要"})
 
-    dev_parts = []
-    if payload.get("changes"):
-        dev_parts.append("### 本次改动\n\n" + bullets(payload["changes"]))
-    if payload.get("implementation_notes"):
-        dev_parts.append("### 实现备注\n\n" + bullets(payload["implementation_notes"]))
-    if payload.get("risks"):
-        dev_parts.append("### 风险与阻塞\n\n" + bullets(payload["risks"]))
-    if payload.get("next_steps"):
-        dev_parts.append("### 后续事项\n\n" + bullets(payload["next_steps"]))
-    if dev_parts:
-        append_development_section(paths["development"], title, "\n\n".join(dev_parts))
-        touched.append("development.md")
+    progress_items = normalize_items(payload.get("implementation_notes")) or normalize_items(payload.get("changes"))
+    if progress_items:
+        upsert_development_section(paths["development"], "当前进展", bullets(progress_items))
+        touched.append({"file": "development.md", "section": "当前进展"})
+
+    risk_items = normalize_items(payload.get("risks"))
+    if risk_items:
+        risk_body = bullets(risk_items)
+        upsert_development_section(paths["development"], "阻塞与注意点", risk_body)
+        upsert_markdown_section(paths["context"], "后续继续前要注意", risk_body)
+        touched.append({"file": "development.md", "section": "阻塞与注意点"})
+        touched.append({"file": "context.md", "section": "后续继续前要注意"})
+
+    next_items = normalize_items(payload.get("next_steps"))
+    if next_items:
+        upsert_development_section(paths["development"], "下一步", bullets(next_items))
+        touched.append({"file": "development.md", "section": "下一步"})
+
+    source_items = normalize_items(payload.get("sources") or payload.get("source_updates"))
+    if source_items:
+        upsert_markdown_section(paths["sources"], "优先阅读", bullets(source_items))
+        touched.append({"file": "sources.md", "section": "优先阅读"})
+
+    context_body = build_context_body(payload)
+    if context_body:
+        upsert_markdown_section(paths["context"], "当前有效上下文", context_body)
+        touched.append({"file": "context.md", "section": "当前有效上下文"})
 
     decision_items = [decision_body(item) for item in (payload.get("decisions") or []) if item.get("decision")]
     if decision_items:
-        append_markdown_section(paths["decision_log"], title, "\n\n".join(decision_items))
-        touched.append("decision-log.md")
+        upsert_markdown_section(paths["context"], "关键决策与原因", "\n\n".join(decision_items))
+        touched.append({"file": "context.md", "section": "关键决策与原因"})
 
-    review_items = payload.get("review_notes") or []
-    if review_items:
-        append_markdown_section(paths["review_notes"], title, bullets(review_items))
-        touched.append("review-notes.md")
-
-    frontend_items = payload.get("frontend_updates") or []
-    if frontend_items:
-        append_markdown_section(paths["frontend_design"], title, bullets(frontend_items))
-        touched.append("frontend-design.md")
-
-    backend_items = payload.get("backend_updates") or []
-    if backend_items:
-        append_markdown_section(paths["backend_design"], title, bullets(backend_items))
-        touched.append("backend-design.md")
-
-    test_items = payload.get("test_updates") or []
-    if test_items:
-        append_markdown_section(paths["test_cases"], title, bullets(test_items))
-        touched.append("test-cases.md")
-
-    manifest = read_json(paths["manifest"])
-    manifest.update(
-        {
-            "repo_root": str(repo_root),
-            "branch": branch_name,
-            "branch_key": branch_key,
-            "context_dir": context_dir,
-            "updated_at": facts["updated_at"],
-            "scope_summary": facts["scope_summary"],
+    manifest = touch_manifest(
+        paths,
+        repo_root,
+        branch_name,
+        branch_key,
+        context_dir,
+        extra={
+            "last_seen_head": get_head_commit(repo_root),
             "last_session_sync_title": title,
-        }
+            "last_session_sync_mode": "commit-local",
+        },
     )
-    write_json(paths["manifest"], manifest)
 
     print(
         json.dumps(
@@ -175,29 +240,13 @@ def command_record_session(args):
                 "branch_dir": str(branch_dir),
                 "mode": "record-session",
                 "title": title,
-                "touched_files": touched,
+                "touched_targets": touched,
+                "updated_at": manifest["updated_at"],
             },
             ensure_ascii=False,
             indent=2,
         )
     )
-
-
-def sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts, last_recorded_commit=None):
-    manifest = read_json(paths["manifest"])
-    manifest.update(
-        {
-            "repo_root": str(repo_root),
-            "branch": branch_name,
-            "branch_key": branch_key,
-            "context_dir": context_dir,
-            "updated_at": facts["updated_at"],
-            "scope_summary": facts["scope_summary"],
-        }
-    )
-    if last_recorded_commit is not None:
-        manifest["last_recorded_commit"] = last_recorded_commit
-    write_json(paths["manifest"], manifest)
 
 
 def command_sync_working_tree(args):
@@ -209,8 +258,8 @@ def command_sync_working_tree(args):
 
     paths = asset_paths(branch_dir)
     facts = collect_git_facts(repo_root, branch_name, context_dir)
-    sync_development(paths, facts)
-    sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts)
+    refresh_git_derived_views(paths, facts)
+    manifest = sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts)
 
     print(
         json.dumps(
@@ -220,6 +269,7 @@ def command_sync_working_tree(args):
                 "context_dir": context_dir,
                 "branch_dir": str(branch_dir),
                 "mode": "sync-working-tree",
+                "focus_areas": manifest["focus_areas"],
                 "files_considered": len(
                     set(
                         facts["working_tree_files"]
@@ -243,21 +293,14 @@ def command_record_head(args):
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
     paths = asset_paths(branch_dir)
-    facts = collect_git_facts(repo_root, branch_name, context_dir)
-    sync_development(paths, facts)
-
-    manifest = read_json(paths["manifest"])
-    current_head = args.commit or get_head_commit(repo_root)
-    recorded = manifest.get("last_recorded_commit")
-    recorded_new_commit = False
-
-    if current_head and current_head != recorded:
-        payload = get_commit_payload(repo_root, current_head)
-        append_commit_record(paths["commits"], payload)
-        recorded = current_head
-        recorded_new_commit = True
-
-    sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts, recorded)
+    manifest = touch_manifest(
+        paths,
+        repo_root,
+        branch_name,
+        branch_key,
+        context_dir,
+        extra={"last_seen_head": args.commit or get_head_commit(repo_root)},
+    )
 
     print(
         json.dumps(
@@ -267,8 +310,7 @@ def command_record_head(args):
                 "context_dir": context_dir,
                 "branch_dir": str(branch_dir),
                 "mode": "record-head",
-                "recorded_commit": recorded,
-                "recorded_new_commit": recorded_new_commit,
+                "last_seen_head": manifest["last_seen_head"],
             },
             ensure_ascii=False,
             indent=2,

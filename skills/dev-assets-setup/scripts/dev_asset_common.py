@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import re
 import subprocess
 from collections import Counter
 from datetime import datetime, timezone
@@ -10,18 +11,15 @@ from pathlib import Path
 DEFAULT_CONTEXT_DIR = ".dev-assets"
 AUTO_START = "<!-- AUTO-GENERATED-START -->"
 AUTO_END = "<!-- AUTO-GENERATED-END -->"
+PLACEHOLDER_MARKERS = ("待补充", "待刷新", "_尚未同步_")
 MANAGED_FILES = (
     "manifest.json",
     "overview.md",
-    "prd.md",
-    "review-notes.md",
-    "frontend-design.md",
-    "backend-design.md",
-    "test-cases.md",
     "development.md",
-    "decision-log.md",
-    "commits.md",
+    "context.md",
+    "sources.md",
 )
+FOCUS_PREFIXES = {"skills", "src", "apps", "packages", "services"}
 
 
 def now_iso():
@@ -148,15 +146,11 @@ def asset_paths(branch_dir):
     return {
         "manifest": branch_dir / "manifest.json",
         "overview": branch_dir / "overview.md",
-        "prd": branch_dir / "prd.md",
-        "review_notes": branch_dir / "review-notes.md",
-        "frontend_design": branch_dir / "frontend-design.md",
-        "backend_design": branch_dir / "backend-design.md",
-        "test_cases": branch_dir / "test-cases.md",
         "development": branch_dir / "development.md",
-        "decision_log": branch_dir / "decision-log.md",
-        "commits": branch_dir / "commits.md",
+        "context": branch_dir / "context.md",
+        "sources": branch_dir / "sources.md",
         "artifacts": branch_dir / "artifacts",
+        "history": branch_dir / "artifacts" / "history",
     }
 
 
@@ -175,101 +169,99 @@ def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def render_bullets(items, empty_text="- 待补充", wrap_code=False):
+    normalized = [str(item).strip() for item in (items or []) if str(item).strip()]
+    if not normalized:
+        return empty_text
+    lines = []
+    for item in normalized:
+        if wrap_code and not (item.startswith("`") and item.endswith("`")):
+            item = f"`{item}`"
+        lines.append(f"- {item}")
+    return "\n".join(lines)
+
+
+def render_title_doc(doc_title, sections, intro=None):
+    parts = [f"# {doc_title}"]
+    if intro:
+        parts.extend(["", intro.strip()])
+    for title, body in sections:
+        parts.extend(["", f"## {title}", "", body.strip()])
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def template_overview(branch_name):
+    return render_title_doc(
+        "概览",
+        [
+            ("分支", f"- {branch_name}"),
+            ("当前目标", "- 待补充"),
+            ("范围边界", "- 待补充"),
+            ("当前阶段", "- 待补充"),
+            ("关键约束", "- 待补充"),
+        ],
+    )
+
+
+def template_development(branch_name):
+    return render_title_doc(
+        "当前开发状态",
+        [
+            ("分支", f"- {branch_name}"),
+            ("建议优先查看的目录", "- 待刷新"),
+            ("当前进展", "- 待补充"),
+            ("阻塞与注意点", "- 待补充"),
+            ("下一步", "- 待补充"),
+            (
+                "自动同步区",
+                "本区由 `dev-assets-context` 或 `dev-assets-sync` 刷新，请不要手工编辑。\n\n"
+                f"{AUTO_START}\n"
+                "_尚未同步_\n"
+                f"{AUTO_END}",
+            ),
+        ],
+    )
+
+
+def template_context():
+    return render_title_doc(
+        "分支上下文",
+        [
+            ("当前有效上下文", "- 待补充"),
+            ("关键决策与原因", "- 待补充"),
+            ("后续继续前要注意", "- 待补充"),
+        ]
+    )
+
+
+def template_sources():
+    return render_title_doc(
+        "源资料索引",
+        [
+            ("优先阅读", "- 待补充"),
+            (
+                "提交与代码历史",
+                "- 需要了解本分支改动时，优先使用 `git log --oneline <base>..HEAD`\n"
+                "- 需要查看某次提交细节时，使用 `git show <sha>`",
+            ),
+        ],
+    )
+
+
 def build_manifest(repo_root, branch_name, branch_key, context_dir):
     return {
+        "schema_version": 2,
         "repo_root": str(repo_root),
         "branch": branch_name,
         "branch_key": branch_key,
         "context_dir": context_dir,
         "initialized_at": now_iso(),
         "updated_at": now_iso(),
-        "last_recorded_commit": None,
+        "last_seen_head": None,
+        "default_base": None,
+        "scope_summary": [],
+        "focus_areas": [],
     }
-
-
-def template_overview(branch_name):
-    return f"""# 概览
-
-## 分支
-
-- {branch_name}
-
-## 需求摘要
-
-- 待补充
-
-## 当前阶段
-
-- 待补充
-
-## 本目录里的重点资产
-
-- `prd.md`
-- `review-notes.md`
-- `frontend-design.md`
-- `backend-design.md`
-- `test-cases.md`
-- `development.md`
-- `decision-log.md`
-- `commits.md`
-"""
-
-
-def template_named_doc(title, bullets):
-    bullet_lines = "\n".join(f"- {item}" for item in bullets)
-    return f"""# {title}
-
-{bullet_lines}
-"""
-
-
-def template_development(branch_name):
-    return f"""# 开发过程
-
-## 分支
-
-- {branch_name}
-
-## 当前需求点
-
-- 待补充
-
-## 实现备注
-
-- 待补充
-
-## 风险与阻塞
-
-- 待补充
-
-## 自动同步区
-
-本区由 `dev-assets-context` 或 `dev-assets-sync` 刷新，请不要手工编辑。
-
-{AUTO_START}
-_尚未同步_
-{AUTO_END}
-"""
-
-
-def template_decision_log():
-    return """# 决策记录
-
-## 记录规范
-
-- 每条记录写明日期、结论、原因、影响范围
-- 只记录后续会反复引用的结论，不写流水账
-"""
-
-
-def template_commits():
-    return """# 提交记录
-
-## 记录规范
-
-- 记录 commit sha、message、时间、涉及需求点
-- 提交前后的重要结论可一起写入
-"""
 
 
 def initialize_assets(repo_root, branch_name, branch_key, context_dir, branch_dir):
@@ -279,33 +271,14 @@ def initialize_assets(repo_root, branch_name, branch_key, context_dir, branch_di
 
     paths = asset_paths(branch_dir)
     paths["artifacts"].mkdir(exist_ok=True)
+    paths["history"].mkdir(parents=True, exist_ok=True)
 
     if not paths["manifest"].exists():
         write_json(paths["manifest"], build_manifest(repo_root, branch_name, branch_key, context_dir))
     ensure_file(paths["overview"], template_overview(branch_name))
-    ensure_file(
-        paths["prd"],
-        template_named_doc("PRD / 需求文档", ["待补充产品背景", "待补充目标与范围", "待补充验收口径"]),
-    )
-    ensure_file(
-        paths["review_notes"],
-        template_named_doc("评审记录", ["待补充评审结论", "待补充争议点", "待补充后续 action"]),
-    )
-    ensure_file(
-        paths["frontend_design"],
-        template_named_doc("前端方案", ["待补充页面范围", "待补充交互/状态", "待补充接口依赖"]),
-    )
-    ensure_file(
-        paths["backend_design"],
-        template_named_doc("后端方案", ["待补充接口/模型", "待补充兼容性考虑", "待补充发布影响"]),
-    )
-    ensure_file(
-        paths["test_cases"],
-        template_named_doc("测试用例", ["待补充主流程", "待补充边界场景", "待补充回归范围"]),
-    )
     ensure_file(paths["development"], template_development(branch_name))
-    ensure_file(paths["decision_log"], template_decision_log())
-    ensure_file(paths["commits"], template_commits())
+    ensure_file(paths["context"], template_context())
+    ensure_file(paths["sources"], template_sources())
     return paths
 
 
@@ -326,9 +299,24 @@ def top_level_scope(path_str):
     return parts[0] if parts else "."
 
 
+def focus_area(path_str):
+    parts = Path(path_str).parts
+    if not parts:
+        return "."
+    if parts[0] in FOCUS_PREFIXES and len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    return parts[0]
+
+
 def summarize_scopes(paths):
     counter = Counter(top_level_scope(path) for path in paths)
     return [{"scope": scope, "files": count} for scope, count in sorted(counter.items())]
+
+
+def summarize_focus_areas(paths, limit=5):
+    counter = Counter(focus_area(path) for path in paths)
+    ranked = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+    return [scope for scope, _ in ranked[:limit]]
 
 
 def collect_git_facts(repo_root, branch_name, context_dir):
@@ -360,53 +348,47 @@ def collect_git_facts(repo_root, branch_name, context_dir):
     return {
         "branch": branch_name,
         "default_base": default_base,
+        "last_seen_head": get_head_commit(repo_root),
         "working_tree_files": working_tree_files,
         "staged_files": staged_files,
         "untracked_files": untracked_files,
         "since_base_files": since_base_files,
         "scope_summary": summarize_scopes(all_paths),
+        "focus_areas": summarize_focus_areas(all_paths),
         "updated_at": now_iso(),
     }
 
 
-def format_list(items):
-    if not items:
-        return "- 无"
-    return "\n".join(f"- {item}" for item in items)
-
-
 def build_auto_block(facts):
     base_line = facts["default_base"] or "未检测到 origin/HEAD"
-    scope_lines = format_list([f"{item['scope']} ({item['files']} files)" for item in facts["scope_summary"]])
-    return f"""### 自动生成
-
-- 更新时间: {facts['updated_at']}
-- 当前分支: {facts['branch']}
-- 默认基线分支: {base_line}
-
-#### 工作区改动文件
-
-{format_list(facts['working_tree_files'])}
-
-#### 已暂存文件
-
-{format_list(facts['staged_files'])}
-
-#### 未跟踪文件
-
-{format_list(facts['untracked_files'])}
-
-#### 相对默认基线的改动文件
-
-{format_list(facts['since_base_files'])}
-
-#### 改动范围汇总
-
-{scope_lines}
-"""
+    head_line = facts["last_seen_head"] or "尚未检测到 HEAD"
+    focus_lines = render_bullets(facts["focus_areas"], empty_text="- 当前未检测到改动目录", wrap_code=True)
+    scope_lines = render_bullets(
+        [f"{item['scope']} ({item['files']} files)" for item in facts["scope_summary"]],
+        empty_text="- 当前未检测到改动范围",
+    )
+    history_hint = (
+        f"- `git log --oneline {facts['default_base']}..HEAD`"
+        if facts["default_base"]
+        else "- `git log --oneline --decorate -n 20`"
+    )
+    return (
+        "### 自动生成\n\n"
+        f"- 更新时间: {facts['updated_at']}\n"
+        f"- 当前分支: {facts['branch']}\n"
+        f"- 默认基线分支: {base_line}\n"
+        f"- 当前 HEAD: {head_line}\n\n"
+        "#### 建议优先查看的目录\n\n"
+        f"{focus_lines}\n\n"
+        "#### 顶层改动范围\n\n"
+        f"{scope_lines}\n\n"
+        "#### 按需查看提交历史\n\n"
+        f"{history_hint}\n"
+        "- `git diff --name-only`\n"
+    )
 
 
-def ensure_development_auto_block(path, branch_name):
+def ensure_development_auto_block(path):
     content = path.read_text(encoding="utf-8")
     if AUTO_START in content and AUTO_END in content:
         return content
@@ -435,26 +417,93 @@ def replace_auto_block(content, replacement):
         raise RuntimeError("development.md is missing auto-generated markers")
     before, remainder = content.split(AUTO_START, 1)
     _, after = remainder.split(AUTO_END, 1)
-    return f"{before}{AUTO_START}\n{replacement}\n{AUTO_END}{after}"
+    return f"{before}{AUTO_START}\n{replacement.rstrip()}\n{AUTO_END}{after}"
+
+
+def split_sections(content):
+    positions = list(re.finditer(r"^## (.+?)\n", content, re.M))
+    if not positions:
+        return content.rstrip(), []
+
+    prefix = content[: positions[0].start()].rstrip()
+    sections = []
+    for index, match in enumerate(positions):
+        start = match.start()
+        end = positions[index + 1].start() if index + 1 < len(positions) else len(content)
+        title = match.group(1).strip()
+        body = content[match.end() : end].strip()
+        sections.append((title, body))
+    return prefix, sections
+
+
+def join_sections(prefix, sections):
+    parts = []
+    prefix = prefix.rstrip()
+    if prefix:
+        parts.append(prefix)
+    for title, body in sections:
+        parts.append(f"## {title}\n\n{body.strip()}")
+    return "\n\n".join(parts).rstrip() + "\n"
+
+
+def upsert_markdown_section(path, title, body):
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    prefix, sections = split_sections(content)
+    updated = []
+    replaced = False
+    for existing_title, existing_body in sections:
+        if existing_title == title:
+            updated.append((title, body))
+            replaced = True
+        else:
+            updated.append((existing_title, existing_body))
+    if not replaced:
+        updated.append((title, body))
+    path.write_text(join_sections(prefix, updated), encoding="utf-8")
+
+
+def upsert_development_section(path, title, body):
+    content = ensure_development_auto_block(path)
+    marker = "## 自动同步区"
+    if marker not in content:
+        raise RuntimeError("development.md is missing the auto-sync section heading")
+    before, after = content.split(marker, 1)
+    prefix, sections = split_sections(before.rstrip())
+    updated = []
+    replaced = False
+    for existing_title, existing_body in sections:
+        if existing_title == title:
+            updated.append((title, body))
+            replaced = True
+        else:
+            updated.append((existing_title, existing_body))
+    if not replaced:
+        updated.append((title, body))
+    rewritten = join_sections(prefix, updated).rstrip() + "\n\n" + marker + after
+    path.write_text(rewritten, encoding="utf-8")
 
 
 def sync_development(paths, facts):
-    current = ensure_development_auto_block(paths["development"], facts["branch"])
+    upsert_development_section(
+        paths["development"],
+        "建议优先查看的目录",
+        render_bullets(facts["focus_areas"], empty_text="- 当前未检测到改动目录", wrap_code=True),
+    )
+    current = ensure_development_auto_block(paths["development"])
     updated = replace_auto_block(current, build_auto_block(facts))
     paths["development"].write_text(updated, encoding="utf-8")
 
 
 def list_missing_docs(paths):
     missing = []
-    placeholder_markers = ("待补充", "_尚未同步_")
     for key, path in paths.items():
-        if key in {"manifest", "artifacts"}:
+        if key in {"manifest", "artifacts", "history"}:
             continue
         if not path.exists():
             missing.append(key)
             continue
         content = path.read_text(encoding="utf-8")
-        if any(marker in content for marker in placeholder_markers):
+        if any(marker in content for marker in PLACEHOLDER_MARKERS):
             missing.append(key)
     return missing
 
@@ -462,57 +511,3 @@ def list_missing_docs(paths):
 def get_head_commit(repo_root):
     sha = git_stdout(["rev-parse", "HEAD"], cwd=repo_root, check=False)
     return sha or None
-
-
-def get_commit_payload(repo_root, commit_sha):
-    if not commit_sha:
-        return None
-    subject = git_stdout(["show", "-s", "--format=%s", commit_sha], cwd=repo_root)
-    body = git_stdout(["show", "-s", "--format=%b", commit_sha], cwd=repo_root, check=False)
-    author_time = git_stdout(["show", "-s", "--format=%cI", commit_sha], cwd=repo_root)
-    files = git_lines(["show", "--name-only", "--format=", commit_sha], cwd=repo_root)
-    return {
-        "sha": commit_sha,
-        "subject": subject,
-        "body": body,
-        "author_time": author_time,
-        "files": files,
-    }
-
-
-def append_commit_record(commits_path, payload):
-    content = commits_path.read_text(encoding="utf-8") if commits_path.exists() else "# 提交记录\n"
-    if payload["sha"] in content:
-        return
-    entry = (
-        f"\n## {payload['sha'][:12]} {payload['subject']}\n\n"
-        f"- 时间: {payload['author_time']}\n"
-        f"- 完整 SHA: {payload['sha']}\n"
-        f"- 涉及文件数: {len(payload['files'])}\n\n"
-        f"### 文件\n\n{format_list(payload['files'])}\n"
-    )
-    if payload["body"]:
-        entry += f"\n### 说明\n\n{payload['body'].strip()}\n"
-    commits_path.write_text(content.rstrip() + "\n" + entry, encoding="utf-8")
-
-
-def append_markdown_section(path, title, body):
-    content = path.read_text(encoding="utf-8") if path.exists() else ""
-    section = f"## {title}\n\n{body.strip()}\n"
-    prefix = content.rstrip()
-    if prefix:
-        prefix += "\n\n"
-    path.write_text(prefix + section + "\n", encoding="utf-8")
-
-
-def append_development_section(path, title, body):
-    content = path.read_text(encoding="utf-8")
-    if AUTO_START not in content or AUTO_END not in content:
-        raise RuntimeError("development.md is missing auto-generated markers")
-    marker = "## 自动同步区"
-    if marker not in content:
-        raise RuntimeError("development.md is missing the auto-sync section heading")
-    before, after = content.split(marker, 1)
-    section = f"## {title}\n\n{body.strip()}\n"
-    updated = before.rstrip() + "\n\n" + section + "\n" + marker + after
-    path.write_text(updated, encoding="utf-8")
