@@ -1,58 +1,59 @@
 ---
 name: dev-assets-context
-description: Use when starting work in any Git repository conversation on an existing branch, before code edits, before repo exploration, or before clarifying implementation details, when Codex should first recover the current branch's saved development memory and identify missing source materials.
+description: Use when starting work in any Git repository conversation on an existing branch, before code edits or repo exploration, when Codex should first recover the current branch's saved development memory, then pull repo-shared memory only if needed.
 ---
 
 # Dev Assets Context
 
-把当前分支目录下已经沉淀的开发记忆读出来，作为默认上下文入口。
+把当前仓库的 branch 记忆作为默认上下文入口恢复出来；repo 共享层只在需要时补读。
 
-**Announce at start:** 用一句简短的话说明将先恢复当前分支记忆。
-
-**Core principle:** 先恢复分支记忆，再进入编码、排查或补问细节。
+**Announce at start:** 用一句简短的话说明将先恢复当前 branch 记忆，再按需补读 repo 共享记忆。
 
 ## Workflow
 
-### Step 1: Locate branch assets
+### Step 1: Locate repo + branch assets
 
-先确认当前目录位于 Git 仓库内，然后运行：
+先运行：
 
 ```bash
 python3 /absolute/path/to/dev-assets-context/scripts/dev_asset_context.py show --repo <repo-path>
 ```
 
-如果资产目录不存在，立即切换到 `dev-assets-setup`，不要直接开始编码。
+如果 branch 目录不存在，立即切到 `dev-assets-setup`。
 
-### Step 2: Optionally refresh lightweight Git-derived navigation
+### Step 2: Refresh lightweight Git-derived navigation
 
-在继续工作前，可以轻量刷新 `development.md` 的 Git 自动区和 focus areas：
+在继续工作前，可以轻量刷新 branch `development.md` 的 Git 自动区和 focus areas：
 
 ```bash
 python3 /absolute/path/to/dev-assets-context/scripts/dev_asset_context.py sync --repo <repo-path>
 ```
 
-### Step 3: Read in layers, not all at once
+### Step 3: Read in layers
 
 默认先读：
 
-- `overview.md`
-- `development.md`
+- branch `overview.md`
+- branch `development.md`
+- branch `context.md`
 
-如果还不够，再读：
+只有在确实需要跨分支稳定背景时，再读：
 
-- `context.md`
+- repo `overview.md`
+- repo `context.md`
 
-只有当你确实需要原始事实时，才去读：
+只有在需要原始事实时，才去读：
 
-- `sources.md` 中列出的源文档、链接或 Git 历史
+- branch `sources.md`
+- repo `sources.md`
 
 ### Step 4: Call out gaps before acting
 
 如果文件仍是模板占位或明显缺失：
 
 - 先指出缺口
-- 再决定是否向用户索要资料
-- 不要把占位模板当成真实需求事实
+- 再决定是否切到 `dev-assets-update` 或 `dev-assets-setup`
+- 不要把占位模板当成真实事实
 
 ## Commands
 
@@ -61,25 +62,18 @@ python3 /absolute/path/to/dev-assets-context/scripts/dev_asset_context.py show -
 python3 /absolute/path/to/dev-assets-context/scripts/dev_asset_context.py sync --repo <repo-path>
 ```
 
-## Reading Strategy
-
-- 不要一上来全量读取整个目录。
-- 先读 `overview.md` 和 `development.md`。
-- 只在本次任务确实需要时再读 `context.md`。
-- 只有需要具体来源时，再按 `sources.md` 回源。
-
 ## Always / Never
 
 **Always:**
 
 - 在 Git 仓库内继续已有分支工作时优先使用本 skill
-- 在开始代码修改前先刷新一次 `development.md`
-- 先读短摘要和工作态，再决定是否补读 context 或 sources
+- 在开始代码修改前先刷新一次 branch `development.md`
+- 先读 branch，再决定是否补读 repo 共享层
 - 发现缺失资产时明确说出来
 
 **Never:**
 
 - 不经读取资产目录就直接声称“我已经理解当前需求”
-- 默认把整个 `.dev-assets/<branch>/` 全部灌进上下文
+- 默认把 repo+branch 全部文件一次灌进上下文
 - 把模板占位内容当成真实背景
-- 资产目录缺失时跳过 setup 直接开始改代码
+- branch 目录缺失时跳过 setup 直接开始改代码

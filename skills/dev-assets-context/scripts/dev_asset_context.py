@@ -16,18 +16,20 @@ from dev_asset_common import (
 
 
 def command_show(args):
-    repo_root, branch_name, branch_key, resolved_context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
-    paths = asset_paths(branch_dir)
+    paths = asset_paths(repo_dir, branch_dir)
     payload = {
         "repo_root": str(repo_root),
+        "repo_key": repo_key,
         "branch": branch_name,
         "branch_key": branch_key,
-        "context_dir": resolved_context_dir,
+        "storage_root": str(storage_root),
+        "repo_dir": str(repo_dir),
         "branch_dir": str(branch_dir),
         "files": {key: str(value) for key, value in paths.items()},
         "missing_or_placeholder": list_missing_docs(paths),
@@ -36,23 +38,24 @@ def command_show(args):
 
 
 def command_sync(args):
-    repo_root, branch_name, branch_key, resolved_context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
-    paths = asset_paths(branch_dir)
-    facts = collect_git_facts(repo_root, branch_name, resolved_context_dir)
+    paths = asset_paths(repo_dir, branch_dir)
+    facts = collect_git_facts(repo_root, branch_name, storage_root)
     sync_development(paths, facts)
 
     manifest = read_json(paths["manifest"])
     manifest.update(
         {
             "repo_root": str(repo_root),
+            "repo_key": repo_key,
             "branch": branch_name,
             "branch_key": branch_key,
-            "context_dir": resolved_context_dir,
+            "storage_root": str(storage_root),
             "updated_at": facts["updated_at"],
             "last_seen_head": facts["last_seen_head"],
             "default_base": facts["default_base"],
@@ -62,10 +65,26 @@ def command_sync(args):
     )
     write_json(paths["manifest"], manifest)
 
+    repo_manifest = read_json(paths["repo_manifest"])
+    repo_manifest.update(
+        {
+            "repo_root": str(repo_root),
+            "repo_key": repo_key,
+            "storage_root": str(storage_root),
+            "updated_at": facts["updated_at"],
+            "last_seen_branch": branch_name,
+            "last_seen_head": facts["last_seen_head"],
+            "default_base": facts["default_base"],
+        }
+    )
+    write_json(paths["repo_manifest"], repo_manifest)
+
     payload = {
         "repo_root": str(repo_root),
+        "repo_key": repo_key,
         "branch": branch_name,
-        "context_dir": resolved_context_dir,
+        "storage_root": str(storage_root),
+        "repo_dir": str(repo_dir),
         "branch_dir": str(branch_dir),
         "missing_or_placeholder": list_missing_docs(paths),
         "focus_areas": facts["focus_areas"],
@@ -82,13 +101,13 @@ def command_sync(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Read or refresh branch-scoped development assets.")
+    parser = argparse.ArgumentParser(description="Read or refresh repo+branch development assets.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     for name in ("show", "sync"):
         sub = subparsers.add_parser(name)
         sub.add_argument("--repo", default=".", help="Path inside the target Git repository")
-        sub.add_argument("--context-dir", help="Repository-local storage root")
+        sub.add_argument("--context-dir", help="User-home storage root. Defaults to ~/.codex/dev-assets/repos")
         sub.add_argument("--branch", help="Branch name. Defaults to the current checked-out branch")
 
     args = parser.parse_args()

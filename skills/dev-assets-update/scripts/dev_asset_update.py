@@ -63,31 +63,51 @@ KIND_MAP = {
         "targets": [{"file": "context", "section": "当前有效上下文"}],
         "reason": "稍详细但仍有效的分支记忆统一进入 context。",
     },
+    "shared-overview": {
+        "targets": [{"file": "repo_overview", "section": "长期目标与边界"}],
+        "reason": "跨分支稳定成立的仓库级目标和边界进入 repo overview。",
+    },
+    "shared-constraint": {
+        "targets": [{"file": "repo_overview", "section": "仓库级关键约束"}],
+        "reason": "跨分支稳定成立的约束进入 repo overview，而不是重复散落在多个分支里。",
+    },
+    "shared-context": {
+        "targets": [{"file": "repo_context", "section": "长期有效背景"}],
+        "reason": "仓库级长期背景进入 repo context。",
+    },
+    "shared-decision": {
+        "targets": [{"file": "repo_context", "section": "跨分支通用决策"}],
+        "reason": "跨分支通用的决策与原因进入 repo context。",
+    },
     "decision": {
         "targets": [{"file": "context", "section": "关键决策与原因"}],
         "reason": "为什么这么做比做了什么更适合留在 context。",
     },
+    "shared-source": {
+        "targets": [{"file": "repo_sources", "section": "共享入口"}],
+        "reason": "仓库级共享资料入口进入 repo sources。",
+    },
     "source": {
-        "targets": [{"file": "sources", "section": "优先阅读"}],
-        "reason": "源文档入口统一收敛到 sources。",
+        "targets": [{"file": "repo_sources", "section": "共享入口"}],
+        "reason": "源文档入口默认进入仓库共享 sources，避免同一仓库的分支重复维护同一组资料入口。",
     },
     "link": {
-        "targets": [{"file": "sources", "section": "优先阅读"}],
-        "reason": "链接和文档入口统一收敛到 sources。",
+        "targets": [{"file": "repo_sources", "section": "共享入口"}],
+        "reason": "链接和文档入口默认进入仓库共享 sources。",
     },
     "prd": {
         "targets": [
             {"file": "context", "section": "当前有效上下文"},
-            {"file": "sources", "section": "优先阅读"},
+            {"file": "repo_sources", "section": "共享入口"},
         ],
-        "reason": "PRD 正文应回源文档，分支资产只保留摘要和入口。",
+        "reason": "PRD 正文应回源文档，分支资产保留摘要，入口默认沉淀到仓库共享 sources。",
     },
     "review": {
         "targets": [
             {"file": "context", "section": "关键决策与原因"},
-            {"file": "sources", "section": "优先阅读"},
+            {"file": "repo_sources", "section": "共享入口"},
         ],
-        "reason": "评审结论保留为当前有效结论，并记录源资料入口。",
+        "reason": "评审结论保留为当前有效结论，并把源资料入口记到仓库共享 sources。",
     },
     "frontend": {
         "targets": [{"file": "context", "section": "当前有效上下文"}],
@@ -157,21 +177,29 @@ def write_target(paths, target_file, section_title, content):
         upsert_markdown_section(path, section_title, content)
 
 
+def target_label(target_file):
+    if target_file.startswith("repo_"):
+        return f"repo/{target_file.replace('repo_', '')}.md"
+    return f"branch/{target_file}.md"
+
+
 def command_show(args):
-    repo_root, branch_name, branch_key, resolved_context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
-    paths = asset_paths(branch_dir)
+    paths = asset_paths(repo_dir, branch_dir)
     print(
         json.dumps(
             {
                 "repo_root": str(repo_root),
+                "repo_key": repo_key,
                 "branch": branch_name,
                 "branch_key": branch_key,
-                "context_dir": resolved_context_dir,
+                "storage_root": str(storage_root),
+                "repo_dir": str(repo_dir),
                 "branch_dir": str(branch_dir),
                 "files": {key: str(value) for key, value in paths.items()},
                 "missing_or_placeholder": list_missing_docs(paths),
@@ -191,7 +219,7 @@ def command_suggest_target(args):
 
 
 def command_write(args):
-    repo_root, branch_name, branch_key, resolved_context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
@@ -199,22 +227,23 @@ def command_write(args):
 
     kind = args.kind.lower()
     targets = resolve_targets(kind)
-    paths = asset_paths(branch_dir)
+    paths = asset_paths(repo_dir, branch_dir)
     content, update_mode = load_content(args)
 
     touched = []
     for target in targets:
         section_title = (args.title or target["section"]).strip()
         write_target(paths, target["file"], section_title, content)
-        touched.append({"file": paths[target["file"]].name, "section": section_title})
+        touched.append({"file": target_label(target["file"]), "section": section_title})
 
     manifest = read_json(paths["manifest"])
     manifest.update(
         {
             "repo_root": str(repo_root),
+            "repo_key": repo_key,
             "branch": branch_name,
             "branch_key": branch_key,
-            "context_dir": resolved_context_dir,
+            "storage_root": str(storage_root),
             "updated_at": now_iso(),
             "last_update_kind": kind,
             "last_update_mode": update_mode,
@@ -223,12 +252,26 @@ def command_write(args):
     )
     write_json(paths["manifest"], manifest)
 
+    repo_manifest = read_json(paths["repo_manifest"])
+    repo_manifest.update(
+        {
+            "repo_root": str(repo_root),
+            "repo_key": repo_key,
+            "storage_root": str(storage_root),
+            "updated_at": manifest["updated_at"],
+            "last_seen_branch": branch_name,
+        }
+    )
+    write_json(paths["repo_manifest"], repo_manifest)
+
     print(
         json.dumps(
             {
                 "repo_root": str(repo_root),
+                "repo_key": repo_key,
                 "branch": branch_name,
-                "context_dir": resolved_context_dir,
+                "storage_root": str(storage_root),
+                "repo_dir": str(repo_dir),
                 "branch_dir": str(branch_dir),
                 "mode": "write",
                 "update_mode": update_mode,
@@ -243,30 +286,45 @@ def command_write(args):
 
 
 def command_touch_manifest(args):
-    repo_root, branch_name, branch_key, resolved_context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
-    paths = asset_paths(branch_dir)
+    paths = asset_paths(repo_dir, branch_dir)
     manifest = read_json(paths["manifest"])
     manifest.update(
         {
             "repo_root": str(repo_root),
+            "repo_key": repo_key,
             "branch": branch_name,
             "branch_key": branch_key,
-            "context_dir": resolved_context_dir,
+            "storage_root": str(storage_root),
             "updated_at": now_iso(),
         }
     )
     write_json(paths["manifest"], manifest)
+
+    repo_manifest = read_json(paths["repo_manifest"])
+    repo_manifest.update(
+        {
+            "repo_root": str(repo_root),
+            "repo_key": repo_key,
+            "storage_root": str(storage_root),
+            "updated_at": manifest["updated_at"],
+            "last_seen_branch": branch_name,
+        }
+    )
+    write_json(paths["repo_manifest"], repo_manifest)
     print(
         json.dumps(
             {
                 "repo_root": str(repo_root),
+                "repo_key": repo_key,
                 "branch": branch_name,
-                "context_dir": resolved_context_dir,
+                "storage_root": str(storage_root),
+                "repo_dir": str(repo_dir),
                 "branch_dir": str(branch_dir),
                 "mode": "touch-manifest",
                 "updated_at": manifest["updated_at"],
@@ -278,12 +336,12 @@ def command_touch_manifest(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Update branch-scoped development asset documents.")
+    parser = argparse.ArgumentParser(description="Update repo+branch development asset documents.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     show = subparsers.add_parser("show")
     show.add_argument("--repo", default=".", help="Path inside the target Git repository")
-    show.add_argument("--context-dir", help="Repository-local storage root")
+    show.add_argument("--context-dir", help="User-home storage root. Defaults to ~/.codex/dev-assets/repos")
     show.add_argument("--branch", help="Branch name. Defaults to the current checked-out branch")
 
     suggest = subparsers.add_parser("suggest-target")
@@ -291,7 +349,7 @@ def main():
 
     write = subparsers.add_parser("write")
     write.add_argument("--repo", default=".", help="Path inside the target Git repository")
-    write.add_argument("--context-dir", help="Repository-local storage root")
+    write.add_argument("--context-dir", help="User-home storage root. Defaults to ~/.codex/dev-assets/repos")
     write.add_argument("--branch", help="Branch name. Defaults to the current checked-out branch")
     write.add_argument("--kind", required=True, help="Kind of update to write")
     write.add_argument("--title", help="Override the default section title")
@@ -304,7 +362,7 @@ def main():
 
     touch = subparsers.add_parser("touch-manifest")
     touch.add_argument("--repo", default=".", help="Path inside the target Git repository")
-    touch.add_argument("--context-dir", help="Repository-local storage root")
+    touch.add_argument("--context-dir", help="User-home storage root. Defaults to ~/.codex/dev-assets/repos")
     touch.add_argument("--branch", help="Branch name. Defaults to the current checked-out branch")
 
     args = parser.parse_args()

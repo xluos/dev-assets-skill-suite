@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 
+import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 
-DEFAULT_CONTEXT_DIR = ".dev-assets"
+DEFAULT_STORAGE_ROOT = Path.home() / ".codex" / "dev-assets" / "repos"
+DEFAULT_LEGACY_CONTEXT_DIR = ".dev-assets"
 AUTO_START = "<!-- AUTO-GENERATED-START -->"
 AUTO_END = "<!-- AUTO-GENERATED-END -->"
 PLACEHOLDER_MARKERS = ("待补充", "待刷新", "_尚未同步_")
@@ -69,81 +74,113 @@ def sanitize_branch_name(branch_name):
     return cleaned
 
 
-def ensure_local_exclude(repo_root, context_dir):
-    exclude_path = Path(repo_root) / ".git" / "info" / "exclude"
-    existing = exclude_path.read_text(encoding="utf-8") if exclude_path.exists() else ""
-    entry = f"{context_dir}/"
-    if entry not in {line.strip() for line in existing.splitlines()}:
-        with exclude_path.open("a", encoding="utf-8") as handle:
-            if existing and not existing.endswith("\n"):
-                handle.write("\n")
-            handle.write(f"{entry}\n")
+def sanitize_repo_name(repo_name):
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", repo_name.strip()).strip("-._")
+    return cleaned or "repo"
 
 
-def set_repo_config(repo_root, context_dir):
-    run_git(["config", "--local", "dev-assets.dir", context_dir], cwd=repo_root)
+def set_storage_root_config(repo_root, storage_root):
+    run_git(["config", "--local", "dev-assets.root", str(storage_root)], cwd=repo_root)
 
 
-def get_context_dir(repo_root, explicit_value=None):
+def get_storage_root(repo_root, explicit_value=None):
     if explicit_value:
-        return explicit_value
+        return Path(explicit_value).expanduser().resolve()
+
+    env_value = os.environ.get("DEV_ASSETS_ROOT", "").strip()
+    if env_value:
+        return Path(env_value).expanduser().resolve()
+
+    configured = run_git(["config", "--get", "dev-assets.root"], cwd=repo_root, check=False)
+    configured_value = configured.stdout.strip()
+    if configured_value:
+        return Path(configured_value).expanduser().resolve()
+
+    legacy = run_git(["config", "--get", "dev-assets.dir"], cwd=repo_root, check=False)
+    legacy_value = legacy.stdout.strip()
+    if legacy_value and Path(legacy_value).expanduser().is_absolute():
+        return Path(legacy_value).expanduser().resolve()
+
+    return DEFAULT_STORAGE_ROOT.expanduser().resolve()
+
+
+def get_legacy_context_dir(repo_root):
     configured = run_git(["config", "--get", "dev-assets.dir"], cwd=repo_root, check=False)
     value = configured.stdout.strip()
-    return value or DEFAULT_CONTEXT_DIR
+    return value or DEFAULT_LEGACY_CONTEXT_DIR
 
 
-def normalize_context_dir(context_dir, branch_name, branch_key):
-    parts = list(Path(context_dir).parts)
-    branch_parts = list(Path(branch_name).parts)
-
-    if branch_parts and len(parts) >= len(branch_parts) and parts[-len(branch_parts) :] == branch_parts:
-        parts = parts[: -len(branch_parts)]
-    if parts and parts[-1] == branch_key:
-        parts = parts[:-1]
-
-    if not parts:
-        return DEFAULT_CONTEXT_DIR
-    return Path(*parts).as_posix()
-
-
-def resolve_branch_dir(repo_root, raw_context_dir, resolved_context_dir, branch_name, branch_key):
+def resolve_legacy_branch_dir(base_dir, branch_name, branch_key):
     candidates = [
-        repo_root / resolved_context_dir / branch_key,
-        repo_root / resolved_context_dir / Path(branch_name),
+        base_dir / branch_key,
+        base_dir / Path(branch_name),
     ]
-    if raw_context_dir != resolved_context_dir:
-        candidates.extend(
-            [
-                repo_root / raw_context_dir / branch_key,
-                repo_root / raw_context_dir / Path(branch_name),
-            ]
-        )
-
-    seen = set()
     for candidate in candidates:
-        key = candidate.as_posix()
-        if key in seen:
-            continue
-        seen.add(key)
         if candidate.exists():
             return candidate
     return candidates[0]
+
+
+def normalize_remote_url(remote_url):
+    value = remote_url.strip()
+    if not value:
+        return None
+
+    if value.startswith("git@") and ":" in value:
+        host_part, repo_part = value.split(":", 1)
+        host = host_part.split("@", 1)[1].lower()
+        normalized = f"{host}/{repo_part}"
+    elif "://" in value:
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower()
+        repo_part = parsed.path.lstrip("/")
+        normalized = f"{host}/{repo_part}" if host else value
+    else:
+        normalized = value
+
+    normalized = normalized.replace("\\", "/").rstrip("/")
+    if normalized.endswith(".git"):
+        normalized = normalized[:-4]
+    return normalized
+
+
+def detect_repo_identity(repo_root):
+    remote = run_git(["remote", "get-url", "origin"], cwd=repo_root, check=False).stdout.strip()
+    if remote:
+        identity = normalize_remote_url(remote)
+        source = "origin"
+    else:
+        identity = repo_root.resolve().as_posix()
+        source = "path"
+
+    repo_slug = sanitize_repo_name(repo_root.name)
+    digest = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:12]
+    return {
+        "repo_identity": identity,
+        "repo_identity_source": source,
+        "repo_key": f"{repo_slug}-{digest}",
+    }
 
 
 def get_branch_paths(repo, context_dir=None, branch=None):
     repo_root = detect_repo_root(repo)
     branch_name = branch or detect_branch(repo_root)
     branch_key = sanitize_branch_name(branch_name)
-    raw_context_dir = get_context_dir(repo_root, context_dir)
-    resolved_context_dir = normalize_context_dir(raw_context_dir, branch_name, branch_key)
-    if not context_dir and resolved_context_dir != raw_context_dir:
-        set_repo_config(repo_root, resolved_context_dir)
-    branch_dir = resolve_branch_dir(repo_root, raw_context_dir, resolved_context_dir, branch_name, branch_key)
-    return repo_root, branch_name, branch_key, resolved_context_dir, branch_dir
+    storage_root = get_storage_root(repo_root, context_dir)
+    identity = detect_repo_identity(repo_root)
+    repo_dir = storage_root / identity["repo_key"]
+    branch_dir = repo_dir / "branches" / branch_key
+    return repo_root, branch_name, branch_key, storage_root, identity["repo_key"], repo_dir, branch_dir
 
 
-def asset_paths(branch_dir):
+def asset_paths(repo_dir, branch_dir):
+    repo_memory_dir = repo_dir / "repo"
     return {
+        "repo_manifest": repo_memory_dir / "manifest.json",
+        "repo_overview": repo_memory_dir / "overview.md",
+        "repo_context": repo_memory_dir / "context.md",
+        "repo_sources": repo_memory_dir / "sources.md",
+        "repo_artifacts": repo_memory_dir / "artifacts",
         "manifest": branch_dir / "manifest.json",
         "overview": branch_dir / "overview.md",
         "development": branch_dir / "development.md",
@@ -167,6 +204,19 @@ def read_json(path):
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def ensure_manifest(path, defaults):
+    existing = read_json(path)
+    if not existing:
+        write_json(path, defaults)
+        return defaults
+
+    merged = dict(existing)
+    merged.update(defaults)
+    merged["initialized_at"] = existing.get("initialized_at", defaults["initialized_at"])
+    write_json(path, merged)
+    return merged
 
 
 def render_bullets(items, empty_text="- 待补充", wrap_code=False):
@@ -230,15 +280,15 @@ def template_context():
             ("当前有效上下文", "- 待补充"),
             ("关键决策与原因", "- 待补充"),
             ("后续继续前要注意", "- 待补充"),
-        ]
+        ],
     )
 
 
 def template_sources():
     return render_title_doc(
-        "源资料索引",
+        "分支源资料索引",
         [
-            ("优先阅读", "- 待补充"),
+            ("当前分支优先阅读", "- 待补充"),
             (
                 "提交与代码历史",
                 "- 需要了解本分支改动时，优先使用 `git log --oneline <base>..HEAD`\n"
@@ -248,13 +298,70 @@ def template_sources():
     )
 
 
-def build_manifest(repo_root, branch_name, branch_key, context_dir):
+def template_repo_overview(repo_name):
+    return render_title_doc(
+        "仓库共享概览",
+        [
+            ("仓库", f"- {repo_name}"),
+            ("长期目标与边界", "- 待补充"),
+            ("仓库级关键约束", "- 待补充"),
+        ],
+    )
+
+
+def template_repo_context():
+    return render_title_doc(
+        "仓库共享上下文",
+        [
+            ("长期有效背景", "- 待补充"),
+            ("跨分支通用决策", "- 待补充"),
+            ("共享注意点", "- 待补充"),
+        ],
+    )
+
+
+def template_repo_sources():
+    return render_title_doc(
+        "仓库共享源资料索引",
+        [
+            ("共享入口", "- 待补充"),
+            (
+                "Git 导航",
+                "- 查看默认基线与提交历史时，优先使用 `git log --oneline <base>..HEAD`\n"
+                "- 查看具体提交细节时，使用 `git show <sha>`",
+            ),
+        ],
+    )
+
+
+def build_repo_manifest(repo_root, storage_root, repo_key, identity):
     return {
-        "schema_version": 2,
+        "schema_version": 3,
+        "scope": "repo",
+        "storage_mode": "user-home-repo-plus-branch",
         "repo_root": str(repo_root),
+        "repo_key": repo_key,
+        "repo_identity": identity["repo_identity"],
+        "repo_identity_source": identity["repo_identity_source"],
+        "storage_root": str(storage_root),
+        "initialized_at": now_iso(),
+        "updated_at": now_iso(),
+        "last_seen_branch": None,
+        "last_seen_head": None,
+        "default_base": None,
+    }
+
+
+def build_branch_manifest(repo_root, branch_name, branch_key, storage_root, repo_key):
+    return {
+        "schema_version": 3,
+        "scope": "branch",
+        "storage_mode": "user-home-repo-plus-branch",
+        "repo_root": str(repo_root),
+        "repo_key": repo_key,
         "branch": branch_name,
         "branch_key": branch_key,
-        "context_dir": context_dir,
+        "storage_root": str(storage_root),
         "initialized_at": now_iso(),
         "updated_at": now_iso(),
         "last_seen_head": None,
@@ -264,21 +371,65 @@ def build_manifest(repo_root, branch_name, branch_key, context_dir):
     }
 
 
-def initialize_assets(repo_root, branch_name, branch_key, context_dir, branch_dir):
-    branch_dir.mkdir(parents=True, exist_ok=True)
-    ensure_local_exclude(repo_root, context_dir)
-    set_repo_config(repo_root, context_dir)
+def migrate_legacy_branch_assets(repo_root, branch_name, branch_key, branch_dir):
+    legacy_context_dir = get_legacy_context_dir(repo_root)
+    if Path(legacy_context_dir).expanduser().is_absolute():
+        legacy_root = Path(legacy_context_dir).expanduser().resolve()
+    else:
+        legacy_root = (repo_root / legacy_context_dir).resolve()
 
-    paths = asset_paths(branch_dir)
+    legacy_branch_dir = resolve_legacy_branch_dir(legacy_root, branch_name, branch_key)
+    if not legacy_branch_dir.exists() or not legacy_branch_dir.is_dir():
+        return None
+
+    branch_dir.mkdir(parents=True, exist_ok=True)
+    migrated = []
+    for file_name in MANAGED_FILES:
+        source = legacy_branch_dir / file_name
+        target = branch_dir / file_name
+        if source.exists() and not target.exists():
+            shutil.copy2(source, target)
+            migrated.append(file_name)
+
+    legacy_history = legacy_branch_dir / "artifacts" / "history"
+    target_history = branch_dir / "artifacts" / "history"
+    if legacy_history.exists() and not target_history.exists():
+        shutil.copytree(legacy_history, target_history, dirs_exist_ok=True)
+        migrated.append("artifacts/history")
+
+    return {"legacy_branch_dir": str(legacy_branch_dir), "migrated": migrated} if migrated else None
+
+
+def initialize_assets(repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir):
+    repo_memory_dir = repo_dir / "repo"
+    repo_memory_dir.mkdir(parents=True, exist_ok=True)
+    branch_dir.mkdir(parents=True, exist_ok=True)
+    set_storage_root_config(repo_root, storage_root)
+
+    identity = detect_repo_identity(repo_root)
+    migration = migrate_legacy_branch_assets(repo_root, branch_name, branch_key, branch_dir)
+    paths = asset_paths(repo_dir, branch_dir)
+    paths["repo_artifacts"].mkdir(exist_ok=True)
     paths["artifacts"].mkdir(exist_ok=True)
     paths["history"].mkdir(parents=True, exist_ok=True)
 
-    if not paths["manifest"].exists():
-        write_json(paths["manifest"], build_manifest(repo_root, branch_name, branch_key, context_dir))
+    ensure_manifest(paths["repo_manifest"], build_repo_manifest(repo_root, storage_root, repo_key, identity))
+    ensure_file(paths["repo_overview"], template_repo_overview(repo_root.name))
+    ensure_file(paths["repo_context"], template_repo_context())
+    ensure_file(paths["repo_sources"], template_repo_sources())
+
+    ensure_manifest(paths["manifest"], build_branch_manifest(repo_root, branch_name, branch_key, storage_root, repo_key))
     ensure_file(paths["overview"], template_overview(branch_name))
     ensure_file(paths["development"], template_development(branch_name))
     ensure_file(paths["context"], template_context())
     ensure_file(paths["sources"], template_sources())
+
+    if migration:
+        branch_manifest = read_json(paths["manifest"])
+        branch_manifest["legacy_migration"] = migration
+        branch_manifest["updated_at"] = now_iso()
+        write_json(paths["manifest"], branch_manifest)
+
     return paths
 
 
@@ -319,30 +470,17 @@ def summarize_focus_areas(paths, limit=5):
     return [scope for scope, _ in ranked[:limit]]
 
 
-def collect_git_facts(repo_root, branch_name, context_dir):
-    context_prefix = f"{context_dir}/"
-    working_tree_files = [
-        path for path in git_lines(["diff", "--name-only"], cwd=repo_root) if not path.startswith(context_prefix)
-    ]
-    staged_files = [
-        path for path in git_lines(["diff", "--cached", "--name-only"], cwd=repo_root) if not path.startswith(context_prefix)
-    ]
-    untracked_files = [
-        path
-        for path in git_lines(["ls-files", "--others", "--exclude-standard"], cwd=repo_root)
-        if not path.startswith(context_prefix)
-    ]
+def collect_git_facts(repo_root, branch_name, _storage_root=None):
+    working_tree_files = git_lines(["diff", "--name-only"], cwd=repo_root)
+    staged_files = git_lines(["diff", "--cached", "--name-only"], cwd=repo_root)
+    untracked_files = git_lines(["ls-files", "--others", "--exclude-standard"], cwd=repo_root)
 
     default_base = detect_default_base(repo_root)
     since_base_files = []
     if default_base:
         merge_base = git_lines(["merge-base", "HEAD", default_base], cwd=repo_root)
         if merge_base:
-            since_base_files = [
-                path
-                for path in git_lines(["diff", "--name-only", f"{merge_base[0]}...HEAD"], cwd=repo_root)
-                if not path.startswith(context_prefix)
-            ]
+            since_base_files = git_lines(["diff", "--name-only", f"{merge_base[0]}...HEAD"], cwd=repo_root)
 
     all_paths = sorted(set(working_tree_files + staged_files + untracked_files + since_base_files))
     return {
@@ -428,7 +566,6 @@ def split_sections(content):
     prefix = content[: positions[0].start()].rstrip()
     sections = []
     for index, match in enumerate(positions):
-        start = match.start()
         end = positions[index + 1].start() if index + 1 < len(positions) else len(content)
         title = match.group(1).strip()
         body = content[match.end() : end].strip()
@@ -497,7 +634,7 @@ def sync_development(paths, facts):
 def list_missing_docs(paths):
     missing = []
     for key, path in paths.items():
-        if key in {"manifest", "artifacts", "history"}:
+        if key in {"manifest", "repo_manifest", "artifacts", "history", "repo_artifacts"}:
             continue
         if not path.exists():
             missing.append(key)

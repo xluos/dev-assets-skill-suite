@@ -1,12 +1,18 @@
 # Storage Layout
 
-`<repo>/.dev-assets/<branch>/`
+Default storage root:
 
-Core files:
+`~/.codex/dev-assets/repos/<repo-key>/`
 
-- `overview.md`: 最短摘要，只保留当前目标、范围、阶段、关键约束
-- `development.md`: 当前工作态与 Git 自动同步块
-- `context.md`: 稍详细但仍然有效的分支记忆
-- `sources.md`: 源文档、链接、Git 历史入口
-- `manifest.json`: HEAD、默认基线、scope、focus areas 等结构化元信息
-- `artifacts/history/`: 归档附件或历史产物
+Core layout:
+
+- `repo/overview.md`: 仓库共享概览
+- `repo/context.md`: 仓库共享上下文
+- `repo/sources.md`: 仓库共享资料入口
+- `repo/manifest.json`: repo 级元信息
+- `branches/<branch>/overview.md`: 分支目标 / 范围 / 阶段 / 约束
+- `branches/<branch>/development.md`: 分支当前工作态与 Git 自动同步块
+- `branches/<branch>/context.md`: 分支 why / caveat / handoff
+- `branches/<branch>/sources.md`: 分支级资料入口与 Git 历史入口
+- `branches/<branch>/manifest.json`: 分支级元信息
+- `branches/<branch>/artifacts/history/`: 分支归档附件或历史产物

@@ -124,14 +124,15 @@ def build_sources_history_body(facts):
     )
 
 
-def sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts, extra=None):
+def sync_manifest(paths, repo_root, branch_name, branch_key, storage_root, repo_key, facts, extra=None):
     manifest = read_json(paths["manifest"])
     manifest.update(
         {
             "repo_root": str(repo_root),
+            "repo_key": repo_key,
             "branch": branch_name,
             "branch_key": branch_key,
-            "context_dir": context_dir,
+            "storage_root": str(storage_root),
             "updated_at": facts["updated_at"],
             "last_seen_head": facts["last_seen_head"],
             "default_base": facts["default_base"],
@@ -145,21 +146,40 @@ def sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts,
     return manifest
 
 
-def touch_manifest(paths, repo_root, branch_name, branch_key, context_dir, extra=None):
+def touch_manifest(paths, repo_root, branch_name, branch_key, storage_root, repo_key, extra=None):
     extra_payload = dict(extra or {})
     manifest = read_json(paths["manifest"])
     manifest.update(
         {
             "repo_root": str(repo_root),
+            "repo_key": repo_key,
             "branch": branch_name,
             "branch_key": branch_key,
-            "context_dir": context_dir,
+            "storage_root": str(storage_root),
             "updated_at": extra_payload.pop("updated_at", now_iso()),
         }
     )
     if extra_payload:
         manifest.update(extra_payload)
     write_json(paths["manifest"], manifest)
+    return manifest
+
+
+def touch_repo_manifest(paths, repo_root, branch_name, storage_root, repo_key, extra=None):
+    extra_payload = dict(extra or {})
+    manifest = read_json(paths["repo_manifest"])
+    manifest.update(
+        {
+            "repo_root": str(repo_root),
+            "repo_key": repo_key,
+            "storage_root": str(storage_root),
+            "updated_at": extra_payload.pop("updated_at", now_iso()),
+            "last_seen_branch": branch_name,
+        }
+    )
+    if extra_payload:
+        manifest.update(extra_payload)
+    write_json(paths["repo_manifest"], manifest)
     return manifest
 
 
@@ -170,13 +190,13 @@ def refresh_git_derived_views(paths, facts):
 
 def command_record_session(args):
     payload = load_session_payload(args)
-    repo_root, branch_name, branch_key, context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
-    paths = asset_paths(branch_dir)
+    paths = asset_paths(repo_dir, branch_dir)
     title = payload.get("title") or "提交同步"
     touched = []
 
@@ -205,8 +225,8 @@ def command_record_session(args):
 
     source_items = normalize_items(payload.get("sources") or payload.get("source_updates"))
     if source_items:
-        upsert_markdown_section(paths["sources"], "优先阅读", bullets(source_items))
-        touched.append({"file": "sources.md", "section": "优先阅读"})
+        upsert_markdown_section(paths["repo_sources"], "共享入口", bullets(source_items))
+        touched.append({"file": "repo/sources.md", "section": "共享入口"})
 
     context_body = build_context_body(payload)
     if context_body:
@@ -223,11 +243,24 @@ def command_record_session(args):
         repo_root,
         branch_name,
         branch_key,
-        context_dir,
+        storage_root,
+        repo_key,
         extra={
             "last_seen_head": get_head_commit(repo_root),
             "last_session_sync_title": title,
             "last_session_sync_mode": "commit-local",
+        },
+    )
+    touch_repo_manifest(
+        paths,
+        repo_root,
+        branch_name,
+        storage_root,
+        repo_key,
+        extra={
+            "updated_at": manifest["updated_at"],
+            "last_seen_head": manifest["last_seen_head"],
+            "default_base": manifest.get("default_base"),
         },
     )
 
@@ -235,8 +268,10 @@ def command_record_session(args):
         json.dumps(
             {
                 "repo_root": str(repo_root),
+                "repo_key": repo_key,
                 "branch": branch_name,
-                "context_dir": context_dir,
+                "storage_root": str(storage_root),
+                "repo_dir": str(repo_dir),
                 "branch_dir": str(branch_dir),
                 "mode": "record-session",
                 "title": title,
@@ -250,23 +285,37 @@ def command_record_session(args):
 
 
 def command_sync_working_tree(args):
-    repo_root, branch_name, branch_key, context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
-    paths = asset_paths(branch_dir)
-    facts = collect_git_facts(repo_root, branch_name, context_dir)
+    paths = asset_paths(repo_dir, branch_dir)
+    facts = collect_git_facts(repo_root, branch_name, storage_root)
     refresh_git_derived_views(paths, facts)
-    manifest = sync_manifest(paths, repo_root, branch_name, branch_key, context_dir, facts)
+    manifest = sync_manifest(paths, repo_root, branch_name, branch_key, storage_root, repo_key, facts)
+    touch_repo_manifest(
+        paths,
+        repo_root,
+        branch_name,
+        storage_root,
+        repo_key,
+        extra={
+            "updated_at": manifest["updated_at"],
+            "last_seen_head": facts["last_seen_head"],
+            "default_base": facts["default_base"],
+        },
+    )
 
     print(
         json.dumps(
             {
                 "repo_root": str(repo_root),
+                "repo_key": repo_key,
                 "branch": branch_name,
-                "context_dir": context_dir,
+                "storage_root": str(storage_root),
+                "repo_dir": str(repo_dir),
                 "branch_dir": str(branch_dir),
                 "mode": "sync-working-tree",
                 "focus_areas": manifest["focus_areas"],
@@ -286,28 +335,39 @@ def command_sync_working_tree(args):
 
 
 def command_record_head(args):
-    repo_root, branch_name, branch_key, context_dir, branch_dir = get_branch_paths(
+    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(
         args.repo, args.context_dir, args.branch
     )
     if not branch_dir.exists():
         raise RuntimeError(f"asset directory does not exist: {branch_dir}. Run dev-assets-setup first.")
 
-    paths = asset_paths(branch_dir)
+    paths = asset_paths(repo_dir, branch_dir)
     manifest = touch_manifest(
         paths,
         repo_root,
         branch_name,
         branch_key,
-        context_dir,
+        storage_root,
+        repo_key,
         extra={"last_seen_head": args.commit or get_head_commit(repo_root)},
+    )
+    touch_repo_manifest(
+        paths,
+        repo_root,
+        branch_name,
+        storage_root,
+        repo_key,
+        extra={"updated_at": manifest["updated_at"], "last_seen_head": manifest["last_seen_head"]},
     )
 
     print(
         json.dumps(
             {
                 "repo_root": str(repo_root),
+                "repo_key": repo_key,
                 "branch": branch_name,
-                "context_dir": context_dir,
+                "storage_root": str(storage_root),
+                "repo_dir": str(repo_dir),
                 "branch_dir": str(branch_dir),
                 "mode": "record-head",
                 "last_seen_head": manifest["last_seen_head"],
@@ -354,14 +414,14 @@ def command_install_hooks(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sync branch-scoped development assets around commits.")
+    parser = argparse.ArgumentParser(description="Sync repo+branch development assets around commits.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     for name in ("sync-working-tree", "record-head", "install-hooks", "record-session"):
         sub = subparsers.add_parser(name)
         sub.add_argument("--repo", default=".", help="Path inside the target Git repository")
         if name != "install-hooks":
-            sub.add_argument("--context-dir", help="Repository-local storage root")
+            sub.add_argument("--context-dir", help="User-home storage root. Defaults to ~/.codex/dev-assets/repos")
             sub.add_argument("--branch", help="Branch name. Defaults to the current checked-out branch")
         if name == "record-head":
             sub.add_argument("--commit", help="Explicit commit sha to record")
