@@ -1,6 +1,6 @@
 ---
 name: dev-assets-sync
-description: Use when the current conversation reaches a commit-related checkpoint or another clear persistence checkpoint, and Codex should write only this round's durable memory back into the current branch memory while keeping repo-shared metadata in sync.
+description: Use when the current conversation reaches a commit-related checkpoint or another clear persistence checkpoint where this round's progress, risks, next steps, and decisions should now be snapshotted for the next session. Use this skill for commit-time, handoff-ready, lifecycle-hook, or milestone snapshots, not for correcting existing memory or persisting one-off clarifications. Repo-shared source updates here mean shared documents and links, not branch-only hot paths.
 ---
 
 # Dev Assets Sync
@@ -15,6 +15,17 @@ description: Use when the current conversation reaches a commit-related checkpoi
 
 只在当前时点已经形成明确的持久化价值时触发 `sync`。
 
+典型信号：
+
+- 刚完成一次提交、准备提交、或刚完成一轮代码/排查检查点
+- 当前进展、阻塞、下一步已经清晰到值得 handoff 或跨会话延续
+- 阶段性方向已经收敛，适合在这个检查点留一份快照
+- 本轮新增了仓库共享层之后还会复用的文档入口、链接或决策结论
+
+单次排查里刚确认 root cause、scope 或某条规则，但这一刻还不是检查点时，不要直接用 `sync`；那类情况要么暂不落盘，要么在确实需要修正现有记忆时改用 `dev-assets-update`。
+
+如果这一刻更像“需要改写某条当前记忆”，优先用 `dev-assets-update`；如果更像“这轮阶段性结果该留个检查点快照”，优先用 `dev-assets-sync`。
+
 ### Step 2: Summarize only what this checkpoint should leave behind
 
 优先提炼：
@@ -24,6 +35,8 @@ description: Use when the current conversation reaches a commit-related checkpoi
 - 下一步
 - 关键决策与原因
 - 本次新增的共享资料入口
+
+这里的“共享资料入口”只指仓库共享层应该复用的文档、链接、外部资料，不包括当前分支后续要看的 hot paths、目录或局部代码入口。
 
 然后运行：
 
@@ -38,6 +51,11 @@ python3 /absolute/path/to/dev-assets-sync/scripts/dev_asset_sync.py record-sessi
 - 进展 / 风险 / 下一步 / 分支级决策 → branch 文件
 - 新增资料入口 → repo `sources.md`
 - HEAD / 最近访问分支 → manifest
+
+额外约束：
+
+- 写进 `repo/sources.md` 的必须是 repo 共享资料入口
+- branch-only 导航、hot paths、局部代码入口不属于这里的 `sources`
 
 它默认不做这些事：
 

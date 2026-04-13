@@ -1,6 +1,6 @@
 ---
 name: dev-assets-update
-description: Use when current development memory needs to be corrected or supplemented, whether explicitly requested by the user or implicitly required because the conversation produced new stable understanding or new shared source entry points for the current repository.
+description: Use when current development memory needs to be corrected, rewritten, or supplemented because the existing dev-assets are wrong, stale, missing a key premise, or the user explicitly wants a durable update. Implicit use is limited to repeated corrections or invalidated conclusions, and to newly provided relevant sources or links that should change future understanding. Do not use this skill for ordinary checkpoint summaries or one-off clarifications; use dev-assets-sync for checkpoint snapshots.
 ---
 
 # Dev Assets Update
@@ -8,6 +8,17 @@ description: Use when current development memory needs to be corrected or supple
 把当前对话中已经形成且需要保留的新理解，改写到 branch 或 repo 共享层的开发记忆里，而不是只留在对话中。
 
 **Announce at start:** 用一句简短的话说明将先重写相关 section，而不是继续追加历史。
+
+## Trigger Hints
+
+优先在这些时刻触发 `update`：
+
+- 用户明确要求“记一下”“同步到 dev-assets”“把这条经验写进去”
+- 发现之前的工作记忆写错了、过时了、缺少关键前提
+- 会话里反复出现理解偏差、口径被纠正、或先前结论已经失效，说明现有记忆需要被修正
+- 用户提供了新的相关资料、链接、文档入口，且这些信息会影响后续理解
+
+不要因为一次性澄清、普通问答往返或阶段性检查点就触发 `update`。如果这一刻更像“该留一个检查点快照”，用 `dev-assets-sync`；如果更像“现有记忆写错了或缺了”，才用 `dev-assets-update`。
 
 ## Workflow
 
@@ -29,6 +40,11 @@ python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py show --r
 - branch `development.md`：进展、阻塞、下一步
 - branch `context.md`：why / caveat / workaround / decision
 - repo `sources.md`：共享资料入口
+
+补充约束：
+
+- `source` / `link` / `shared-source` 这类更新默认面向 repo 共享资料入口
+- 当前分支后续要看的 hot paths、目录、局部代码入口，不要伪装成 repo `sources.md` 更新
 
 如果是显式 repo 共享层更新，使用这些 kind：
 
@@ -90,4 +106,5 @@ python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py touch-ma
 - 把所有新增信息都堆到一个文件里
 - 用“之后再整理”为理由跳过沉淀
 - 继续把 `update` 当成 append-only 笔记工具
+- 因为一次性澄清或普通 milestone 就触发隐式 `update`
 - 把 branch-specific 当前工作态写进 repo 共享层
