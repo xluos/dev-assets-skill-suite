@@ -97,6 +97,18 @@ Shared behavior:
 - `Stop`: persist a lightweight HEAD marker after each response
 - `SessionEnd`: persist the final HEAD marker at session end
 
+Quick Codex install into the current repository:
+
+```bash
+sh scripts/install_codex_hooks.sh
+```
+
+Or run it directly from GitHub in the repository you want to enable:
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/xluos/dev-asset-skill-suite/main/scripts/install_codex_hooks.sh)"
+```
+
 Boundary:
 
 - This repository ships reusable hook templates and helper scripts, but the actual repo-local config files are environment-local

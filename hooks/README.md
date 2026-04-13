@@ -15,6 +15,20 @@
 - `scripts/hooks/*.py` 是这两套配置共用的实际执行脚本
 - 是否自动生效取决于你本地是否把对应配置文件落到了各自约定位置，而不是模板文件本身
 
+### Codex 快速安装
+
+在目标仓库根目录执行：
+
+```bash
+sh scripts/install_codex_hooks.sh
+```
+
+如果只是想直接从 GitHub 拉脚本并把模板 merge 到当前目录的 `.codex/hooks.json`：
+
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/xluos/dev-asset-skill-suite/main/scripts/install_codex_hooks.sh)"
+```
+
 ## 这些 hook 做什么
 
 - Claude:
