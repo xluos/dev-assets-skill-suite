@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-LIB_ROOT = REPO_ROOT / "lib"
+PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(os.environ.get("DEV_ASSETS_HOOK_REPO_ROOT", ".")).expanduser().resolve()
+LIB_ROOT = PACKAGE_ROOT / "lib"
 if str(LIB_ROOT) not in sys.path:
     sys.path.insert(0, str(LIB_ROOT))
 
 from dev_asset_common import AUTO_END, AUTO_START, PLACEHOLDER_MARKERS, asset_paths, get_branch_paths
 
 
-CONTEXT_SCRIPT = REPO_ROOT / "skills" / "dev-assets-context" / "scripts" / "dev_asset_context.py"
-SYNC_SCRIPT = REPO_ROOT / "skills" / "dev-assets-sync" / "scripts" / "dev_asset_sync.py"
+CONTEXT_SCRIPT = PACKAGE_ROOT / "skills" / "dev-assets-context" / "scripts" / "dev_asset_context.py"
+SYNC_SCRIPT = PACKAGE_ROOT / "skills" / "dev-assets-sync" / "scripts" / "dev_asset_sync.py"
 
 
 def run_python(script_path, *args):

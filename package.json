@@ -1,0 +1,50 @@
+{
+  "name": "@xluos/dev-assets-cli",
+  "version": "0.1.0",
+  "description": "CLI for dev-assets hooks and repo-local setup",
+  "license": "MIT",
+  "scripts": {
+    "check": "node scripts/npm/check-package.mjs",
+    "build": "node scripts/npm/build-package.mjs",
+    "pack:dry-run": "npm pack --dry-run",
+    "publish:dry-run": "npm publish --access public --dry-run",
+    "publish:npm": "npm publish --access public",
+    "prepublishOnly": "npm run check"
+  },
+  "bin": {
+    "dev-assets": "bin/dev-assets.js"
+  },
+  "files": [
+    "bin/dev-assets.js",
+    "hooks/*.json",
+    "hooks/README.md",
+    "lib/*.py",
+    "skills/dev-assets-context/SKILL.md",
+    "skills/dev-assets-context/agents/*.yaml",
+    "skills/dev-assets-context/references/*",
+    "skills/dev-assets-context/scripts/*.py",
+    "skills/dev-assets-setup/SKILL.md",
+    "skills/dev-assets-setup/agents/*.yaml",
+    "skills/dev-assets-setup/references/*",
+    "skills/dev-assets-setup/scripts/*.py",
+    "skills/dev-assets-sync/SKILL.md",
+    "skills/dev-assets-sync/agents/*.yaml",
+    "skills/dev-assets-sync/references/*",
+    "skills/dev-assets-sync/scripts/*.py",
+    "skills/dev-assets-update/SKILL.md",
+    "skills/dev-assets-update/agents/*.yaml",
+    "skills/dev-assets-update/references/*",
+    "skills/dev-assets-update/scripts/*.py",
+    "skills/using-dev-assets/SKILL.md",
+    "skills/using-dev-assets/agents/*.yaml",
+    "suite-manifest.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

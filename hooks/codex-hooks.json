@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/session_start.py",
+            "command": "npx dev-assets hook session-start",
             "timeout": 20
           }
         ],
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/stop.py",
+            "command": "npx dev-assets hook stop",
             "timeout": 15
           }
         ],

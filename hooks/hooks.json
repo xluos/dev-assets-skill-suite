@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/session_start.py"
+            "command": "npx dev-assets hook session-start"
           }
         ],
         "description": "Load repo+branch dev-assets context at session start",
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/pre_compact.py",
+            "command": "npx dev-assets hook pre-compact",
             "timeout": 20
           }
         ],
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/stop.py",
+            "command": "npx dev-assets hook stop",
             "timeout": 15
           }
         ],
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/session_end.py",
+            "command": "npx dev-assets hook session-end",
             "timeout": 15
           }
         ],

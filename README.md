@@ -109,12 +109,25 @@ Or run it directly from GitHub in the repository you want to enable:
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/xluos/dev-asset-skill-suite/main/scripts/install_codex_hooks.sh)"
 ```
 
+The installer will:
+
+- install `@xluos/dev-assets-cli` into the target repository
+- merge Codex hooks into `.codex/hooks.json`
+- make hooks call `npx dev-assets hook ...`, so they no longer depend on repo-local Python paths
+
+You can also merge hooks manually after the CLI is installed:
+
+```bash
+npx dev-assets install-hooks codex
+npx dev-assets install-hooks claude
+```
+
 Boundary:
 
-- This repository ships reusable hook templates and helper scripts, but the actual repo-local config files are environment-local
+- This repository ships reusable hook templates and a reusable CLI, but the actual repo-local config files are environment-local
 - In this clone, Codex can read `.codex/hooks.json` directly; Claude typically uses a local `.claude/settings.local.json` file that may be ignored by user-level Git rules
 - Global skill installs do not auto-load hooks yet, because this project is a skill suite rather than a standalone plugin
-- For global installs, merge `hooks/hooks.json` into Claude settings and `hooks/codex-hooks.json` into `~/.codex/hooks.json`
+- Hook execution is now expected to go through `dev-assets` CLI, not raw `python3 scripts/hooks/*.py`
 
 ## Notes
 

@@ -1,0 +1,5 @@
+**/__pycache__/
+**/*.pyc
+skills/branch-context/
+skills/branch-context-setup/
+dist/
