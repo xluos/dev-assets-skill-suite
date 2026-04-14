@@ -153,7 +153,7 @@ def detect_repo_identity(repo_root):
         identity = repo_root.resolve().as_posix()
         source = "path"
 
-    repo_slug = sanitize_repo_name(repo_root.name)
+    repo_slug = sanitize_repo_name(Path(identity).name or repo_root.name)
     digest = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:12]
     return {
         "repo_identity": identity,
