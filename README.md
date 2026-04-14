@@ -109,42 +109,38 @@ Shared behavior:
 - `Stop`: persist a lightweight HEAD marker after each response
 - `SessionEnd`: persist the final HEAD marker at session end
 
-Quick install into the current repository (Codex by default; pass `--agent claude` for Claude, or invoke the symlinked `install_claude_hooks.sh`):
+Recommended: install the CLI once globally, then merge hooks per repo.
 
 ```bash
-sh scripts/install_codex_hooks.sh                    # Codex
-sh scripts/install_codex_hooks.sh --agent claude     # Claude
-sh scripts/install_claude_hooks.sh                   # equivalent to the line above
+npm install -g @xluos/dev-assets-cli                 # once
+dev-assets install-hooks codex                       # in the target repo (defaults to cwd)
+dev-assets install-hooks claude
 ```
 
-Or run either installer directly from GitHub in the repository you want to enable:
+Or merge hooks into the agent's **user-level** config instead of per-repo:
 
 ```bash
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/xluos/dev-asset-skill-suite/main/scripts/install_codex_hooks.sh)"
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/xluos/dev-asset-skill-suite/main/scripts/install_claude_hooks.sh)"
+dev-assets install-hooks codex --global              # writes ~/.codex/hooks.json
+dev-assets install-hooks claude --global             # writes ~/.claude/settings.json
 ```
 
-The installer will:
-
-- install `@xluos/dev-assets-cli` into the target repository
-- merge hooks into `.codex/hooks.json` or `.claude/settings.local.json` depending on the chosen agent
-- make hooks call `npx dev-assets hook ...`, so they no longer depend on repo-local Python paths
-
-If the CLI is already a dev-dependency in the target repository, you can merge hooks directly without re-running the installer:
+Without a global CLI install, run via `npx` (downloads on demand):
 
 ```bash
-npx dev-assets install-hooks codex
-npx dev-assets install-hooks claude
+npx -y @xluos/dev-assets-cli install-hooks codex
+npx -y @xluos/dev-assets-cli install-hooks claude --global
 ```
 
-Or install the CLI alone (without merging any hooks):
+`install-hooks <agent>` merges hooks into the target config. Repo scope writes `.codex/hooks.json` or `.claude/settings.local.json`; `--global` writes `~/.codex/hooks.json` or `~/.claude/settings.json`. Hooks call `dev-assets hook ...`, so the CLI must be reachable on PATH (global install) or resolvable via `npx`. `--repo` defaults to the current working directory when omitted.
+
+Shell installers (`scripts/install_codex_hooks.sh`, `scripts/install_claude_hooks.sh`) are thin wrappers around the same command for environments that prefer a shell entry:
 
 ```bash
-npx dev-assets install-cli                           # default package: @xluos/dev-assets-cli
-npx dev-assets install-cli --package file:/path/to/checkout
+sh scripts/install_codex_hooks.sh                    # Codex, repo-scoped
+sh scripts/install_codex_hooks.sh --agent claude     # Claude, repo-scoped
+sh scripts/install_codex_hooks.sh --global           # Codex, user-level
+sh scripts/install_claude_hooks.sh --global          # Claude, user-level
 ```
-
-`install-hooks <agent>` requires the CLI to already be importable in the target repo's `node_modules`; the shell installer above handles that bootstrap step. Don't run `install-hooks claude` in a fresh repo without first running either the shell installer or `install-cli`.
 
 Boundary:
 

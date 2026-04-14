@@ -116,6 +116,12 @@ function targetPathForAgent(agent, repoRoot) {
   fail(`unsupported agent: ${agent}`);
 }
 
+function globalTargetPathForAgent(agent) {
+  if (agent === "codex") return path.join(os.homedir(), ".codex", "hooks.json");
+  if (agent === "claude") return path.join(os.homedir(), ".claude", "settings.json");
+  fail(`unsupported agent: ${agent}`);
+}
+
 function mergeHookLists(existingItems, incomingItems) {
   const merged = existingItems.map((item) => ({ ...item }));
   const index = new Map();
@@ -145,20 +151,6 @@ function mergeConfig(existingConfig, templateConfig) {
   return result;
 }
 
-function installPackage(packageSpec, repoRoot) {
-  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(
-    npmCmd,
-    ["install", "--save-dev", packageSpec],
-    { cwd: repoRoot, encoding: "utf8", stdio: ["inherit", "pipe", "pipe"] }
-  );
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
-  if (result.status !== 0) {
-    process.exit(result.status || 1);
-  }
-}
-
 function commandHook(positional, options) {
   const action = positional[0];
   const repoRoot = path.resolve(options.repo || process.cwd());
@@ -167,28 +159,31 @@ function commandHook(positional, options) {
 
 function commandInstallHooks(positional, options) {
   const agent = positional[0] || options.agent || "codex";
-  const repoRoot = path.resolve(options.repo || process.cwd());
-  const targetPath = targetPathForAgent(agent, repoRoot);
+  const isGlobal = Boolean(options.global);
   const template = loadJson(templatePathForAgent(agent));
+  let targetPath;
+  let scope;
+  let repoRoot = null;
+  if (isGlobal) {
+    targetPath = globalTargetPathForAgent(agent);
+    scope = "global";
+  } else {
+    repoRoot = path.resolve(options.repo || process.cwd());
+    targetPath = targetPathForAgent(agent, repoRoot);
+    scope = "repo";
+  }
   const existing = fs.existsSync(targetPath) ? loadJson(targetPath) : {};
   const merged = mergeConfig(existing, template);
   writeJson(targetPath, merged);
-  process.stdout.write(
-    `${JSON.stringify({ repo_root: repoRoot, agent, target: targetPath, events: Object.keys(template.hooks || {}) }, null, 2)}\n`
-  );
-}
-
-function commandInstallCli(_positional, options) {
-  const repoRoot = path.resolve(options.repo || process.cwd());
-  const packageSpec = options.package || "@xluos/dev-assets-cli";
-  installPackage(packageSpec, repoRoot);
+  const report = { agent, scope, target: targetPath, events: Object.keys(template.hooks || {}) };
+  if (repoRoot) report.repo_root = repoRoot;
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }
 
 function printHelp() {
   process.stdout.write(`Usage:
   dev-assets hook <session-start|pre-compact|stop|session-end> [--repo PATH]
-  dev-assets install-hooks <codex|claude> [--repo PATH]
-  dev-assets install-cli [--repo PATH] [--package SPEC]
+  dev-assets install-hooks <codex|claude> [--repo PATH] [--global]
 
 Environment:
   DEV_ASSETS_ROOT defaults to ${DEFAULT_STORAGE_ROOT}
@@ -208,10 +203,6 @@ function main() {
   }
   if (command === "install-hooks") {
     commandInstallHooks(positional, options);
-    return;
-  }
-  if (command === "install-cli") {
-    commandInstallCli(positional, options);
     return;
   }
   fail(`unknown command: ${command}`);
