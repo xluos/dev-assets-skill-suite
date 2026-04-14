@@ -11,14 +11,14 @@ description: Use when current development memory needs to be corrected, rewritte
 
 ## Trigger Hints
 
-优先在这些时刻触发 `update`：
+`update` 是非检查点时刻的零散修正/补充入口。典型触发：
 
-- 用户明确要求“记一下”“同步到 dev-assets”“把这条经验写进去”
+- 用户明确要求"记一下"、"同步到 dev-assets"、"把这条经验写进去"
 - 发现之前的工作记忆写错了、过时了、缺少关键前提
-- 会话里反复出现理解偏差、口径被纠正、或先前结论已经失效，说明现有记忆需要被修正
+- 会话里反复出现理解偏差、口径被纠正、或先前结论已经失效
 - 用户提供了新的相关资料、链接、文档入口，且这些信息会影响后续理解
 
-不要因为一次性澄清、普通问答往返或阶段性检查点就触发 `update`。如果这一刻更像“该留一个检查点快照”，用 `dev-assets-sync`；如果更像“现有记忆写错了或缺了”，才用 `dev-assets-update`。
+检查点时刻（commit / handoff / 阶段收敛 / lifecycle hook）请走 `dev-assets-sync`，由 sync 在其流程内部再决定是否调用 update。完整路由判定见 `using-dev-assets`。
 
 ## Workflow
 
@@ -104,7 +104,6 @@ python3 /absolute/path/to/dev-assets-update/scripts/dev_asset_update.py touch-ma
 **Never:**
 
 - 把所有新增信息都堆到一个文件里
-- 用“之后再整理”为理由跳过沉淀
+- 用"之后再整理"为理由跳过沉淀
 - 继续把 `update` 当成 append-only 笔记工具
-- 因为一次性澄清或普通 milestone 就触发隐式 `update`
 - 把 branch-specific 当前工作态写进 repo 共享层

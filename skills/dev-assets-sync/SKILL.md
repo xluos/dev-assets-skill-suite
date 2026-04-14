@@ -11,20 +11,19 @@ description: Use when the current conversation reaches a commit-related checkpoi
 
 ## Workflow
 
-### Step 1: Decide whether this moment is worth syncing
+### Step 1: Confirm this is a real checkpoint
 
-只在当前时点已经形成明确的持久化价值时触发 `sync`。
-
-典型信号：
+进入 sync 前，确认当前时点确实是检查点：
 
 - 刚完成一次提交、准备提交、或刚完成一轮代码/排查检查点
 - 当前进展、阻塞、下一步已经清晰到值得 handoff 或跨会话延续
 - 阶段性方向已经收敛，适合在这个检查点留一份快照
 - 本轮新增了仓库共享层之后还会复用的文档入口、链接或决策结论
+- lifecycle hook 触发
 
-单次排查里刚确认 root cause、scope 或某条规则，但这一刻还不是检查点时，不要直接用 `sync`；那类情况要么暂不落盘，要么在确实需要修正现有记忆时改用 `dev-assets-update`。
+如果只是单次排查里刚确认 root cause / scope / 某条规则，还不到检查点，就别进 sync。具体路由判定（包括 sync 与 update 的关系）以 `using-dev-assets` 为准。
 
-如果这一刻更像“需要改写某条当前记忆”，优先用 `dev-assets-update`；如果更像“这轮阶段性结果该留个检查点快照”，优先用 `dev-assets-sync`。
+确认是检查点后，sync 是一个"复合动作包"：本流程内部如果同时发现需要改写某条旧记忆，先按 `dev-assets-update` 改写对应 section，再回到 Step 2 做 record-session。
 
 ### Step 2: Summarize only what this checkpoint should leave behind
 
@@ -38,55 +37,9 @@ description: Use when the current conversation reaches a commit-related checkpoi
 
 这里的“共享资料入口”只指仓库共享层应该复用的文档、链接、外部资料，不包括当前分支后续要看的 hot paths、目录或局部代码入口。
 
-`record-session` 不接受任意自定义字段名。准备 `summary.json` 时，至少按下面的脚本实际 schema 组织：
+`record-session` 不接受任意自定义字段名（例如 `current_progress`、`blockers_or_caveats`、`shared_sources` 都会被忽略；`decisions` 必须是 object 数组而不是 string 数组，否则脚本会直接报错）。准备 `summary.json` 之前请先读 `references/commit-sync.md`，里面有完整字段表、别名、最小示例和常见错误模式，不要凭印象脑补 schema。
 
-- `title`: string，可选
-- `overview_summary`: `string | string[]`，可选
-- `implementation_notes`: `string | string[]`，可选；`changes` 是它的兼容别名
-- `risks`: `string | string[]`，可选
-- `next_steps`: `string | string[]`，可选
-- `sources`: `string | string[]`，可选；`source_updates` 是它的兼容别名
-- `decisions`: `object[]`，可选；每项至少应有 `decision`，可选带 `reason`、`impact`
-- `memory` / `context_updates`: `string | string[]`，可选
-- `review_notes` / `frontend_updates` / `backend_updates` / `test_updates`: `string | string[]`，可选
-
-最小可用示例：
-
-```json
-{
-  "title": "本次检查点标题",
-  "implementation_notes": [
-    "完成了当前轮次最值得留存的进展"
-  ],
-  "risks": [
-    "还有一个已知风险未消除"
-  ],
-  "next_steps": [
-    "下次继续先做什么"
-  ],
-  "decisions": [
-    {
-      "decision": "之后优先检查页面入口装配和插件注入",
-      "reason": "同批功能整组缺失时，先看单插件显隐容易偏题",
-      "impact": "适用于同类插件化页面的排查顺序"
-    }
-  ],
-  "sources": [
-    "apps/example/page.tsx - 当前分支里与结论直接相关的共享代码入口"
-  ]
-}
-```
-
-不要自己发明近义字段名，例如：
-
-- 不要把 `implementation_notes` 写成 `current_progress`
-- 不要把 `risks` 写成 `blockers_or_caveats`
-- 不要把 `sources` 写成 `shared_sources`
-- 不要把 `decisions` 写成 `string[]`
-
-其中 `shared_sources` 这类错字段会被脚本忽略，`decisions` 如果写成字符串数组则会在处理 `item.get("decision")` 时直接报错。需要完整说明时，先看 `references/commit-sync.md`，不要凭印象脑补 schema。
-
-然后运行：
+整理好 summary 后运行：
 
 ```bash
 python3 /absolute/path/to/dev-assets-sync/scripts/dev_asset_sync.py record-session --repo <repo-path> --summary-file <summary.json>
