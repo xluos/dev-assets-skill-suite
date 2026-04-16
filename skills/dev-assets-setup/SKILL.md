@@ -7,6 +7,8 @@ description: Use when a branch starts a new requirement stream or when the curre
 
 为当前 Git 仓库初始化用户目录下的 repo+branch 开发记忆骨架，并在初始化后主动向用户收集最小但关键的资料。
 
+**Workspace mode：** 初始化始终针对单个仓库。cwd 是多 repo workspace 时，必须通过 `--repo <basename>` 明确指定目标仓库，每个新仓库分别调用一次；绝不做批量自动初始化，避免用户意外污染不相关的仓库。
+
 **Announce at start:** 用一句简短的话说明将先初始化当前仓库的 repo+branch 记忆目录。
 
 ## Workflow

@@ -13,6 +13,18 @@ This repository packages a small skill suite for one job: keep development memor
 Detailed guide:
 
 - [docs/dev-asset-skill-suite-guide.md](docs/dev-asset-skill-suite-guide.md)
+- [docs/workspace-mode.md](docs/workspace-mode.md) — multi-repo workspace mode (new)
+
+## Workspace Mode
+
+When cwd is not itself a git repo but its first-level subdirectories are (a "workspace" layout hosting multiple cloned repos), the suite switches to **workspace mode** automatically:
+
+- `SessionStart`: injects full memory for the **primary repo** (from env `DEV_ASSETS_PRIMARY_REPO`, basename) plus a brief overview of the other repos; when no primary is set, all repos get the brief form.
+- `Stop` / `SessionEnd`: records HEAD for every repo in the workspace (idempotent).
+- `PreCompact`: refreshes working-tree navigation for every repo (Claude only).
+- `dev-assets-sync` / `-context` / `-update`: pass `--repo <basename>` explicitly, or rely on `DEV_ASSETS_PRIMARY_REPO` for the default target.
+
+Single-repo cwd behavior is unchanged. See [docs/workspace-mode.md](docs/workspace-mode.md) for the full design.
 
 ## Install with `npx skills`
 

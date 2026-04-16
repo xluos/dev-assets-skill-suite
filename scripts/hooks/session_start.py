@@ -3,12 +3,26 @@
 import json
 import sys
 
-from _common import build_session_start_context, log
+from _common import (
+    build_session_start_context,
+    build_workspace_start_context,
+    is_workspace_mode,
+    log,
+)
+
+
+def _resolve_context():
+    if is_workspace_mode():
+        ctx = build_workspace_start_context()
+        if ctx:
+            return ctx
+        return "dev-assets workspace 模式：当前 workspace 下未发现已初始化的仓库记忆。"
+    return build_session_start_context()
 
 
 def main():
     try:
-        additional_context = build_session_start_context()
+        additional_context = _resolve_context()
         payload = {
             "hookSpecificOutput": {
                 "hookEventName": "SessionStart",

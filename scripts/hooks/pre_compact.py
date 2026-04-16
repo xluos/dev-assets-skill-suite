@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 
-from _common import log, maybe_sync_working_tree, resolve_assets
+from _common import (
+    is_workspace_mode,
+    log,
+    maybe_sync_working_tree,
+    resolve_assets,
+    sync_working_tree_all_repos,
+)
 
 
 def main():
     try:
+        if is_workspace_mode():
+            results = sync_working_tree_all_repos()
+            if not results:
+                log("[dev-assets][PreCompact] workspace mode: no initialized repos refreshed")
+            return 0
         assets = resolve_assets()
         if not assets["branch_dir"].exists():
             log("[dev-assets][PreCompact] branch memory not initialized, skip")

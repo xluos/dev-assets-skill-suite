@@ -7,6 +7,8 @@ description: Use when current development memory needs to be corrected, rewritte
 
 把当前对话中已经形成且需要保留的新理解，改写到 branch 或 repo 共享层的开发记忆里，而不是只留在对话中。
 
+**Workspace mode：** cwd 是多 repo workspace 时，改写需要通过 `--repo <basename>` 明确目标仓库；未指定且 `DEV_ASSETS_PRIMARY_REPO` env 已设置则落到 primary 仓库。改写不跨仓库合并。
+
 **Announce at start:** 用一句简短的话说明将先重写相关 section，而不是继续追加历史。
 
 ## Trigger Hints

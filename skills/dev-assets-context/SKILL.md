@@ -7,6 +7,8 @@ description: Use when starting work in any Git repository conversation on an exi
 
 把当前仓库的 branch 记忆作为默认上下文入口恢复出来；repo 共享层只在需要时补读。
 
+**Workspace mode：** cwd 是多 repo workspace 时，SessionStart 已自动注入 primary 仓库的完整记忆 + 其他仓库的简短概览。当需要切换焦点到非 primary 仓库补读完整记忆时，向脚本传递 `--repo <basename>` 明确指定。
+
 **Announce at start:** 用一句简短的话说明将先恢复当前 branch 记忆，再按需补读 repo 共享记忆。
 
 ## Workflow

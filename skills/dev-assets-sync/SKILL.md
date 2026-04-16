@@ -7,6 +7,8 @@ description: Use when the current conversation reaches a commit-related checkpoi
 
 在提交相关检查点，或在当前对话已经形成需要跨会话保留的稳定结论时，把这次会话结束后仍然有价值的信息同步到当前 branch 记忆，并顺带刷新 repo 共享层的轻量元信息。
 
+**Workspace mode：** 当 cwd 是 workspace 根（不是 git repo，但一级子目录中有多个 git repo）时：向脚本传递 `--repo <basename>` 明确指定目标仓库；若未指定且 `DEV_ASSETS_PRIMARY_REPO` env 已设置，会默认落到 primary 仓库。跨仓库 sync 需要为每个仓库各调用一次。
+
 **Announce at start:** 用一句简短的话说明将先沉淀本次检查点留下的关键信息。
 
 ## Workflow

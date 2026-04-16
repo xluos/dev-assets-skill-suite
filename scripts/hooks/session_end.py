@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 
-from _common import log, maybe_record_head, resolve_assets
+from _common import (
+    is_workspace_mode,
+    log,
+    maybe_record_head,
+    record_head_all_repos,
+    resolve_assets,
+)
 
 
 def main():
     try:
+        if is_workspace_mode():
+            results = record_head_all_repos()
+            if not results:
+                log("[dev-assets][SessionEnd] workspace mode: no initialized repos finalized")
+            return 0
         assets = resolve_assets()
         if not assets["branch_dir"].exists():
             log("[dev-assets][SessionEnd] branch memory not initialized, skip")

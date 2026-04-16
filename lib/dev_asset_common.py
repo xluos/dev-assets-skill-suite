@@ -162,7 +162,34 @@ def detect_repo_identity(repo_root):
     }
 
 
+def _resolve_workspace_repo(repo):
+    """If `repo` points to a workspace root (cwd is not a git repo, but first-level
+    subdirs are), redirect to the primary repo via `DEV_ASSETS_PRIMARY_REPO` env.
+    Single-repo case returns `repo` unchanged. Raises in workspace mode when
+    primary is unset or does not match an existing subdir, so callers see a
+    clear error instead of git failing later.
+    """
+    if not detect_workspace_mode(repo):
+        return repo
+    primary = os.environ.get("DEV_ASSETS_PRIMARY_REPO", "").strip()
+    repos_in_ws = list_repos_in_workspace(repo)
+    names = [p.name for p in repos_in_ws]
+    if not primary:
+        raise RuntimeError(
+            f"workspace mode detected at '{repo}': pass --repo <basename> explicitly "
+            f"(one of: {names}) or set DEV_ASSETS_PRIMARY_REPO env."
+        )
+    match = next((p for p in repos_in_ws if p.name == primary), None)
+    if match is None:
+        raise RuntimeError(
+            f"workspace mode: DEV_ASSETS_PRIMARY_REPO='{primary}' not found in '{repo}'. "
+            f"Available: {names}."
+        )
+    return str(match)
+
+
 def get_branch_paths(repo, context_dir=None, branch=None):
+    repo = _resolve_workspace_repo(repo)
     repo_root = detect_repo_root(repo)
     branch_name = branch or detect_branch(repo_root)
     branch_key = sanitize_branch_name(branch_name)
@@ -171,6 +198,53 @@ def get_branch_paths(repo, context_dir=None, branch=None):
     repo_dir = storage_root / identity["repo_key"]
     branch_dir = repo_dir / "branches" / branch_key
     return repo_root, branch_name, branch_key, storage_root, identity["repo_key"], repo_dir, branch_dir
+
+
+def detect_workspace_mode(cwd=None):
+    """Return True iff cwd is not inside any git repo yet has first-level
+    subdirectories that are git repos. Purely additive — existing single-repo
+    behavior (cwd inside a git repo) returns False.
+    """
+    base = Path(cwd or ".").resolve()
+    if not base.exists() or not base.is_dir():
+        return False
+    probe = run_git(["rev-parse", "--show-toplevel"], cwd=base, check=False)
+    if probe.returncode == 0 and probe.stdout.strip():
+        return False
+    return bool(list_repos_in_workspace(base))
+
+
+def list_repos_in_workspace(cwd=None):
+    """First-level subdirectories of cwd that are git repos. Sorted by name.
+    Returns [] when cwd has none or isn't readable. `.git` may be a dir or a
+    file (worktree pointer); both count.
+    """
+    base = Path(cwd or ".").resolve()
+    repos = []
+    try:
+        entries = sorted(base.iterdir(), key=lambda p: p.name)
+    except (OSError, PermissionError):
+        return []
+    for entry in entries:
+        if not entry.is_dir():
+            continue
+        if (entry / ".git").exists():
+            repos.append(entry)
+    return repos
+
+
+def get_all_branch_paths(cwd=None, context_dir=None):
+    """Batch variant of get_branch_paths() for every repo under a workspace cwd.
+    Repos with detached HEAD or other resolution errors are skipped silently.
+    Returns [] when not in workspace mode.
+    """
+    result = []
+    for repo_path in list_repos_in_workspace(cwd):
+        try:
+            result.append(get_branch_paths(str(repo_path), context_dir=context_dir))
+        except Exception:
+            continue
+    return result
 
 
 def asset_paths(repo_dir, branch_dir):

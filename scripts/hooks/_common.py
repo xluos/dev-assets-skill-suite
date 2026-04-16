@@ -14,17 +14,26 @@ LIB_ROOT = PACKAGE_ROOT / "lib"
 if str(LIB_ROOT) not in sys.path:
     sys.path.insert(0, str(LIB_ROOT))
 
-from dev_asset_common import AUTO_END, AUTO_START, PLACEHOLDER_MARKERS, asset_paths, get_branch_paths
+from dev_asset_common import (
+    AUTO_END,
+    AUTO_START,
+    PLACEHOLDER_MARKERS,
+    asset_paths,
+    detect_workspace_mode,
+    get_branch_paths,
+    list_repos_in_workspace,
+)
 
 
 CONTEXT_SCRIPT = PACKAGE_ROOT / "skills" / "dev-assets-context" / "scripts" / "dev_asset_context.py"
 SYNC_SCRIPT = PACKAGE_ROOT / "skills" / "dev-assets-sync" / "scripts" / "dev_asset_sync.py"
 
 
-def run_python(script_path, *args):
+def run_python(script_path, *args, cwd=None):
+    work_cwd = cwd if cwd is not None else REPO_ROOT
     result = subprocess.run(
         ["python3", str(script_path), *args],
-        cwd=REPO_ROOT,
+        cwd=work_cwd,
         check=False,
         capture_output=True,
         text=True,
@@ -38,10 +47,12 @@ def log(message):
     print(message, file=sys.stderr)
 
 
-def resolve_assets():
-    repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(str(REPO_ROOT))
+def resolve_assets_for(repo_root):
+    """Resolve asset paths for an explicit repo root (workspace-mode friendly)."""
+    repo_root_str = str(repo_root)
+    root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir = get_branch_paths(repo_root_str)
     return {
-        "repo_root": repo_root,
+        "repo_root": root,
         "branch_name": branch_name,
         "branch_key": branch_key,
         "storage_root": storage_root,
@@ -50,6 +61,24 @@ def resolve_assets():
         "branch_dir": branch_dir,
         "paths": asset_paths(repo_dir, branch_dir),
     }
+
+
+def resolve_assets():
+    return resolve_assets_for(REPO_ROOT)
+
+
+def is_workspace_mode():
+    return detect_workspace_mode(str(REPO_ROOT))
+
+
+def list_workspace_repos():
+    return list_repos_in_workspace(str(REPO_ROOT))
+
+
+def primary_repo_name():
+    """Basename of the focus repo from env; None if unset."""
+    value = os.environ.get("DEV_ASSETS_PRIMARY_REPO", "").strip()
+    return value or None
 
 
 def strip_managed_markers(text):
@@ -87,54 +116,192 @@ def compact_body(text, max_lines=8, max_chars=700):
     return compacted
 
 
+def sync_context_for(repo_root):
+    return json.loads(
+        run_python(CONTEXT_SCRIPT, "sync", "--repo", str(repo_root), cwd=str(repo_root))
+    )
+
+
+def sync_working_tree_for(repo_root):
+    return json.loads(
+        run_python(SYNC_SCRIPT, "sync-working-tree", "--repo", str(repo_root), cwd=str(repo_root))
+    )
+
+
+def record_head_for(repo_root):
+    return json.loads(
+        run_python(SYNC_SCRIPT, "record-head", "--repo", str(repo_root), cwd=str(repo_root))
+    )
+
+
 def maybe_sync_context():
-    return json.loads(run_python(CONTEXT_SCRIPT, "sync", "--repo", str(REPO_ROOT)))
+    return sync_context_for(REPO_ROOT)
 
 
 def maybe_sync_working_tree():
-    return json.loads(run_python(SYNC_SCRIPT, "sync-working-tree", "--repo", str(REPO_ROOT)))
+    return sync_working_tree_for(REPO_ROOT)
 
 
 def maybe_record_head():
-    return json.loads(run_python(SYNC_SCRIPT, "record-head", "--repo", str(REPO_ROOT)))
+    return record_head_for(REPO_ROOT)
+
+
+_FULL_SECTION_KEYS = (
+    ("overview", "当前目标"),
+    ("overview", "范围边界"),
+    ("overview", "当前阶段"),
+    ("overview", "关键约束"),
+    ("development", "建议优先查看的目录"),
+    ("development", "当前进展"),
+    ("development", "阻塞与注意点"),
+    ("development", "下一步"),
+    ("context", "当前有效上下文"),
+    ("context", "关键决策与原因"),
+    ("context", "后续继续前要注意"),
+    ("repo_overview", "长期目标与边界"),
+    ("repo_overview", "仓库级关键约束"),
+    ("repo_sources", "共享入口"),
+)
+
+_BRIEF_SECTION_KEYS = (
+    ("overview", "当前目标"),
+    ("overview", "当前阶段"),
+    ("development", "当前进展"),
+    ("development", "下一步"),
+)
+
+
+def _extract_sections(paths, keys):
+    out = []
+    for file_key, title in keys:
+        body = extract_section(paths[file_key], title)
+        out.append((title, body))
+    return out
+
+
+def _build_context_from_assets(assets, *, full=True, heading=None):
+    if not assets["branch_dir"].exists():
+        if heading is None:
+            return (
+                "当前仓库尚未初始化 dev-assets 分支记忆。\n"
+                "如果这是需要跨会话继续的开发线，请先使用 `dev-assets-setup` 建立 repo+branch 存储。"
+            )
+        return None
+
+    paths = assets["paths"]
+    keys = _FULL_SECTION_KEYS if full else _BRIEF_SECTION_KEYS
+    sections = _extract_sections(paths, keys)
+    max_lines, max_chars = (8, 700) if full else (3, 200)
+
+    parts = []
+    if heading is None:
+        parts.append(
+            f"已加载 dev-assets：repo `{assets['repo_key']}`，branch `{assets['branch_name']}`。"
+        )
+        parts.append(f"主存储目录：`{assets['branch_dir']}`")
+    else:
+        parts.append(heading)
+    for title, body in sections:
+        if body:
+            parts.append(f"{title}:\n{compact_body(body, max_lines=max_lines, max_chars=max_chars)}")
+    return "\n\n".join(parts)
 
 
 def build_session_start_context():
     assets = resolve_assets()
-    if not assets["branch_dir"].exists():
-        return (
-            "当前仓库尚未初始化 dev-assets 分支记忆。\n"
-            "如果这是需要跨会话继续的开发线，请先使用 `dev-assets-setup` 建立 repo+branch 存储。"
-        )
-
     try:
         maybe_sync_context()
     except Exception as exc:
         log(f"[dev-assets][SessionStart] refresh skipped: {exc}")
+    return _build_context_from_assets(assets, full=True)
 
-    paths = assets["paths"]
-    sections = [
-        ("当前目标", extract_section(paths["overview"], "当前目标")),
-        ("范围边界", extract_section(paths["overview"], "范围边界")),
-        ("当前阶段", extract_section(paths["overview"], "当前阶段")),
-        ("关键约束", extract_section(paths["overview"], "关键约束")),
-        ("建议优先查看的目录", extract_section(paths["development"], "建议优先查看的目录")),
-        ("当前进展", extract_section(paths["development"], "当前进展")),
-        ("阻塞与注意点", extract_section(paths["development"], "阻塞与注意点")),
-        ("下一步", extract_section(paths["development"], "下一步")),
-        ("当前有效上下文", extract_section(paths["context"], "当前有效上下文")),
-        ("关键决策与原因", extract_section(paths["context"], "关键决策与原因")),
-        ("后续继续前要注意", extract_section(paths["context"], "后续继续前要注意")),
-        ("仓库级长期目标与边界", extract_section(paths["repo_overview"], "长期目标与边界")),
-        ("仓库级关键约束", extract_section(paths["repo_overview"], "仓库级关键约束")),
-        ("共享入口", extract_section(paths["repo_sources"], "共享入口")),
-    ]
 
-    parts = [
-        f"已加载 dev-assets：repo `{assets['repo_key']}`，branch `{assets['branch_name']}`。",
-        f"主存储目录：`{assets['branch_dir']}`",
+def build_context_for_repo(repo_path, *, full=True, is_primary=False):
+    """Build a per-repo context block for workspace-mode SessionStart injection.
+    Returns None when the repo has no initialized branch memory or resolution fails.
+    """
+    try:
+        assets = resolve_assets_for(repo_path)
+    except Exception as exc:
+        log(f"[dev-assets] resolve failed for {Path(repo_path).name}: {exc}")
+        return None
+    try:
+        sync_context_for(repo_path)
+    except Exception as exc:
+        log(f"[dev-assets] context sync skipped for {Path(repo_path).name}: {exc}")
+    tag = "[PRIMARY] " if is_primary else ""
+    heading = (
+        f"## {tag}`{Path(repo_path).name}` — repo `{assets['repo_key']}`, branch `{assets['branch_name']}`"
+    )
+    return _build_context_from_assets(assets, full=full, heading=heading)
+
+
+def build_workspace_start_context():
+    """SessionStart context for workspace mode. Primary repo gets full memory;
+    others get a brief overview only. Returns None if no initialized repos.
+    """
+    repos = list_workspace_repos()
+    if not repos:
+        return None
+    primary = primary_repo_name()
+    primary_hit = False
+    sections = []
+    for repo_path in repos:
+        is_primary = (primary is None) or (repo_path.name == primary)
+        if is_primary:
+            primary_hit = True
+        ctx = build_context_for_repo(repo_path, full=is_primary, is_primary=is_primary)
+        if ctx:
+            sections.append(ctx)
+    if not sections:
+        return None
+    header_parts = [
+        f"已加载 dev-assets workspace 模式：共 {len(repos)} 个仓库 @ `{REPO_ROOT}`"
     ]
-    for title, body in sections:
-        if body:
-            parts.append(f"{title}:\n{compact_body(body)}")
-    return "\n\n".join(parts)
+    if primary:
+        status = "命中" if primary_hit else "未在 workspace 中找到,全部按完整模式注入"
+        header_parts.append(f"Primary 仓库提示：`{primary}` ({status})")
+    header = "\n".join(header_parts)
+    return header + "\n\n---\n\n" + "\n\n---\n\n".join(sections)
+
+
+def record_head_all_repos():
+    """Stop/SessionEnd hook helper for workspace mode. Iterates all repos; logs per-repo
+    outcome; swallows per-repo failures.
+    """
+    results = []
+    for repo_path in list_workspace_repos():
+        try:
+            assets = resolve_assets_for(repo_path)
+            if not assets["branch_dir"].exists():
+                log(f"[dev-assets] {repo_path.name}: branch memory not initialized, skip")
+                continue
+            payload = record_head_for(repo_path)
+            log(
+                f"[dev-assets] {repo_path.name}: recorded HEAD "
+                f"{payload.get('last_seen_head')} for {payload.get('branch')}"
+            )
+            results.append((repo_path.name, payload))
+        except Exception as exc:
+            log(f"[dev-assets] {repo_path.name}: record-head skipped: {exc}")
+    return results
+
+
+def sync_working_tree_all_repos():
+    """PreCompact hook helper for workspace mode. Iterates all repos."""
+    results = []
+    for repo_path in list_workspace_repos():
+        try:
+            assets = resolve_assets_for(repo_path)
+            if not assets["branch_dir"].exists():
+                log(f"[dev-assets] {repo_path.name}: branch memory not initialized, skip")
+                continue
+            payload = sync_working_tree_for(repo_path)
+            log(
+                f"[dev-assets] {repo_path.name}: refreshed working-tree navigation for "
+                f"{payload.get('branch')} ({payload.get('files_considered')} files)"
+            )
+            results.append((repo_path.name, payload))
+        except Exception as exc:
+            log(f"[dev-assets] {repo_path.name}: working-tree sync skipped: {exc}")
+    return results
