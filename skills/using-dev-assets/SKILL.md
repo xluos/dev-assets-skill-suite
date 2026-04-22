@@ -10,7 +10,7 @@ description: >-
 
 # Using Dev Assets
 
-这是开发资产套件的总入口 skill。它不直接沉淀资料，而是决定在当前对话起点或会话进行中，是否应该先走 `dev-assets-context`、`dev-assets-setup`、`dev-assets-update` 或 `dev-assets-sync`。
+这是开发资产套件的总入口 skill。它不直接沉淀资料，而是决定在当前对话起点或会话进行中，是否应该先走 `dev-assets-context`、`dev-assets-setup`、`dev-assets-update`、`dev-assets-sync` 或 `dev-assets-graduate`。
 
 **Announce at start:** 用一句简短的话说明将先判断当前对话是否需要进入 dev-assets 套件。
 
@@ -20,11 +20,14 @@ description: >-
 
 | 当前情境 | 走哪个 skill |
 | --- | --- |
-| 当前 repo 还没有当前 branch 的资产目录，或这是新需求/新分支第一次开始 | `dev-assets-setup` |
+| 用户说"归档"/"分支收尾"/"需求做完了"/"merge 完了清一下" | `dev-assets-graduate` |
+| 当前 repo 还没有当前 branch 的资产目录，或这是新需求/新分支第一次开始；或当前 cwd 是非 git 项目目录但需要持久化记忆 | `dev-assets-setup` |
 | 在已有分支上继续开发、排查、解释、修改（默认情况） | `dev-assets-context` |
 | 已经到了检查点：刚提交 / 准备提交 / handoff / 阶段收敛 / lifecycle hook 触发 | `dev-assets-sync` |
 | 不是检查点，但对话里出现了"现有记忆写错了/缺了/被新资料推翻了" | `dev-assets-update` |
 | 都不命中 | 不进入套件，正常对话 |
+
+graduate 必须**显式触发**，destructive 操作不能 implicit 跑。在 no-git 模式下（cwd 不是 git repo），graduate 永远不命中。
 
 ### Update 与 Sync 的关系
 

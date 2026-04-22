@@ -811,6 +811,28 @@ def upsert_markdown_section(path, title, body):
     path.write_text(join_sections(prefix, updated), encoding="utf-8")
 
 
+def append_to_section(path, title, body):
+    """Append body to the end of a markdown section, creating the section if
+    missing. Used by graduate's append-mode harvest so multi-entry harvests
+    don't clobber each other (unlike upsert which always replaces).
+    """
+    content = path.read_text(encoding="utf-8") if path.exists() else ""
+    prefix, sections = split_sections(content)
+    target = title.strip()
+    matched = False
+    updated = []
+    for existing_title, existing_body in sections:
+        if existing_title.strip() == target and not matched:
+            combined = (existing_body.rstrip() + "\n" + body.strip()).strip()
+            updated.append((existing_title, combined))
+            matched = True
+        else:
+            updated.append((existing_title, existing_body))
+    if not matched:
+        updated.append((title, body.strip()))
+    path.write_text(join_sections(prefix, updated), encoding="utf-8")
+
+
 def upsert_development_section(path, title, body):
     content = ensure_development_auto_block(path)
     marker = "## 自动同步区"
@@ -843,6 +865,67 @@ def sync_development(paths, facts):
     current = ensure_development_auto_block(paths["development"])
     updated = replace_auto_block(current, build_auto_block(facts))
     paths["development"].write_text(updated, encoding="utf-8")
+
+
+ARCHIVE_DIR_NAME = "_archived"
+ARCHIVE_INDEX_NAME = "INDEX.md"
+
+
+def archive_root_dir(repo_dir):
+    """Where archived branches go: <repo_dir>/branches/_archived/."""
+    return repo_dir / "branches" / ARCHIVE_DIR_NAME
+
+
+def build_archive_summary(branch_manifest, git_log_lines, harvest_notes=None):
+    """Produce the markdown content for archive_summary.md."""
+    parts = ["# 归档快照", ""]
+    if harvest_notes:
+        parts.extend(["## Harvest 备注", "", harvest_notes.strip(), ""])
+    parts.extend([
+        "## 归档时元数据",
+        "",
+        f"- 归档时间: {now_iso()}",
+        f"- 分支: {branch_manifest.get('branch', '<unknown>')}",
+        f"- 最终 HEAD: {branch_manifest.get('last_seen_head') or '<unknown>'}",
+        f"- 默认基线: {branch_manifest.get('default_base') or '<unknown>'}",
+        f"- 最近 sync 标题: {branch_manifest.get('last_session_sync_title') or '<none>'}",
+        "",
+    ])
+    if git_log_lines:
+        parts.append("## Git log (base..HEAD, oneline)")
+        parts.append("")
+        parts.append("```")
+        parts.extend(git_log_lines)
+        parts.append("```")
+        parts.append("")
+    return "\n".join(parts).rstrip() + "\n"
+
+
+def archive_branch_dir(branch_dir, archive_dst):
+    """Move branch_dir to archive_dst. Caller decides the destination name
+    (typically `<branch_key>__<YYYYMMDD>`). Raises if dst already exists, so
+    same-day double-archive doesn't silently merge directories.
+    """
+    archive_dst.parent.mkdir(parents=True, exist_ok=True)
+    if archive_dst.exists():
+        raise RuntimeError(f"archive destination already exists: {archive_dst}")
+    shutil.move(str(branch_dir), str(archive_dst))
+
+
+def append_archive_index(index_path, line):
+    """Append a one-line entry to the archive INDEX.md (created if missing).
+
+    The header is preserved across appends; entries are kept in chronological
+    insertion order so an `ls`-like read gives a usable history at a glance.
+    """
+    if not index_path.exists():
+        index_path.write_text(
+            "# 归档分支索引\n\n按归档时间倒序追加。每条记录格式：\n\n"
+            "`- <YYYY-MM-DD> <branch_name> (HEAD <sha>) → harvested <N> entries: <notes>`\n\n",
+            encoding="utf-8",
+        )
+    with index_path.open("a", encoding="utf-8") as fh:
+        fh.write(line.rstrip() + "\n")
 
 
 def list_missing_docs(paths):
