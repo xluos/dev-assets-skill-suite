@@ -1,0 +1,37 @@
+flowchart TD
+  IN["capture record<br/>--content &lt;text&gt;"]:::input --> KIND{"指定 --kind?"}
+  KIND -->|是| EXP[按 kind 直接路由]:::explicit
+  KIND -->|否| HEUR[classify_content<br/>heuristic 正则]:::auto
+
+  HEUR --> H1{内容特征}
+  H1 -->|"结论 / 决定 / 改为 / 采用"| K1[decision]:::kind
+  H1 -->|"阻塞 / 注意 / 坑 / 失败"| K2[risk]:::kind
+  H1 -->|"即 / 指的是 / http / 术语"| K3[glossary]:::kind
+  H1 -->|"当前 / 已完成 / commit"| K4[progress]:::kind
+  H1 -->|"都不中 + 未 setup"| K5[unsorted 兜底]:::fallback
+  H1 -->|"都不中 + 已 setup"| K4
+
+  EXP --> APPLY
+  K1 --> APPLY
+  K2 --> APPLY
+  K3 --> APPLY
+  K4 --> APPLY
+  K5 --> APPLY
+
+  APPLY["按 kind 的 default_mode<br/>选 append / upsert"] --> MAIN[写入主文件]:::main
+
+  APPLY --> CROSS{is_cross_branch<br/>_candidate?}
+  CROSS -->|"无分支名 token<br/>+ 含经验/模式/通用"| PEND[append 到<br/>pending-promotion.md]:::staging
+  CROSS -->|否| SKIP[仅主写入]
+
+  MAIN --> END([完成])
+  PEND --> END
+  SKIP --> END
+
+  classDef input fill:#e3f2fd,stroke:#1976d2
+  classDef explicit fill:#fff3e0,stroke:#e65100
+  classDef auto fill:#fff3e0,stroke:#e65100
+  classDef kind fill:#f3e5f5,stroke:#6a1b9a
+  classDef fallback fill:#fce4ec,stroke:#c2185b
+  classDef main fill:#e8f5e9,stroke:#388e3c
+  classDef staging fill:#fffde7,stroke:#f57f17
