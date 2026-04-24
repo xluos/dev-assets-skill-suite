@@ -1011,12 +1011,38 @@ def classify_content(text, *, already_setup=False):
     return "progress" if already_setup else "unsorted"
 
 
+# Branch-name tokens that appear in generic technical content too often to
+# reliably signal "this is branch-local". Without filtering them out, a branch
+# named `feature/capture-hook` would reject any lesson that says "hook" — e.g.
+# "阻塞式 hook 不能做重活" — even though that's exactly the kind of cross-branch
+# insight we want to stage. Keep this list to tokens that overwhelmingly appear
+# as throw-away prefixes, layer names, or ubiquitous tech nouns.
+_GENERIC_BRANCH_TOKENS = frozenset({
+    "feature", "feat", "fix", "bug", "bugfix", "hotfix", "chore", "refactor",
+    "docs", "test", "tests", "wip", "tmp", "temp", "main", "master", "dev",
+    "develop", "release", "hook", "hooks", "apis", "cli", "web", "app",
+    "lib", "libs", "util", "utils", "core", "base", "auth", "data", "cache",
+    "user", "users", "admin", "demo", "example", "sample", "draft",
+})
+
+_CROSS_BRANCH_SIGNAL = re.compile(
+    r"经验|模式|最佳实践|教训|通用|复用|以后.{0,6}都|所有.{0,10}都.{0,4}要|gotcha|pattern|lesson|repo-wide|across\s+branches",
+    re.I,
+)
+
+
 def is_cross_branch_candidate(text, branch_name):
     """Heuristic: return True if content looks reusable across branches.
 
     Conservative — returns True only when:
-      - content doesn't mention branch-specific terms, AND
-      - content has lesson-learned signals (经验/模式/最佳实践/教训/gotcha/pattern).
+      - content doesn't mention *branch-specific* terms (generic tech tokens
+        like "hook"/"api"/"feature" are ignored via `_GENERIC_BRANCH_TOKENS`,
+        so a branch named `feature/capture-hook` doesn't reject any lesson
+        mentioning "hook"), AND
+      - content has lesson-learned signals (经验/模式/最佳实践/教训/通用/以后都/所有
+        ...都要/gotcha/pattern/lesson/repo-wide).
+
+    Matches use word boundaries so "hook" in `hookup` doesn't falsely trigger.
 
     Cross-branch candidates are copied into pending-promotion.md in addition
     to their primary target file. graduate then only scans pending-promotion
@@ -1025,11 +1051,12 @@ def is_cross_branch_candidate(text, branch_name):
     if not text or not branch_name:
         return False
     lowered = text.lower()
-    # If any non-trivial branch token appears verbatim, treat as branch-local.
     for token in branch_name.lower().replace("/", " ").replace("_", " ").replace("-", " ").split():
-        if len(token) >= 4 and token in lowered:
+        if len(token) < 4 or token in _GENERIC_BRANCH_TOKENS:
+            continue
+        if re.search(rf"\b{re.escape(token)}\b", lowered):
             return False
-    return bool(re.search(r"经验|模式|最佳实践|教训|通用|复用|gotcha|pattern|lesson", text, re.I))
+    return bool(_CROSS_BRANCH_SIGNAL.search(text))
 
 
 # ---------------------------------------------------------------------------
