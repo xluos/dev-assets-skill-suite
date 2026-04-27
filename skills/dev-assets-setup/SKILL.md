@@ -39,7 +39,7 @@ Setup 的新职责是一个 **promotion 动作**：
 ### Step 1: init（永远安全，幂等）
 
 ```bash
-python3 /absolute/path/to/dev-assets-setup/scripts/init_dev_assets.py init \
+npx dev-assets setup init \
   [--repo <repo-path>] [--branch <branch-name>]
 ```
 
@@ -86,7 +86,7 @@ plan.json 格式：
 运行 merge：
 
 ```bash
-python3 /absolute/path/to/dev-assets-setup/scripts/init_dev_assets.py merge-unsorted \
+npx dev-assets setup merge-unsorted \
   --plan-file /tmp/dev-assets-merge-plan.json \
   [--repo <repo-path>]
 ```
@@ -111,7 +111,7 @@ setup 之后仍可能有空模板，走 capture 填：
 如果 unsorted 是空的，但你想切换默认分类策略（从"不确定 → unsorted"切到"不确定 → progress"），直接跑：
 
 ```bash
-python3 /absolute/path/to/dev-assets-setup/scripts/init_dev_assets.py mark-completed \
+npx dev-assets setup mark-completed \
   [--repo <repo-path>]
 ```
 

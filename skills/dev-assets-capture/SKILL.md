@@ -62,7 +62,7 @@ Capture 是 dev-assets 套件里**唯一的写入入口**。不管是 checkpoint
 ### Mode 1: 显式 kind（最精准，适合你知道该进哪个文件）
 
 ```bash
-python3 scripts/dev_asset_capture.py record \
+npx dev-assets capture record \
   --repo <repo-path> \
   --kind decision \
   --content "结论: 撤销 fresh retry，改为抛 CodexMissingResumeError"
@@ -89,7 +89,7 @@ python3 scripts/dev_asset_capture.py record \
 ### Mode 2: auto（让分类器决定）
 
 ```bash
-python3 scripts/dev_asset_capture.py record \
+npx dev-assets capture record \
   --repo <repo-path> \
   --auto \
   --content "阻塞：恢复卡 pending 状态是进程内 Map，服务重启后旧按钮失效"
@@ -107,7 +107,7 @@ heuristic 规则（按先到先中的顺序）：
 不确定时用 `suggest-kind` 子命令先 dry-run：
 
 ```bash
-python3 scripts/dev_asset_capture.py suggest-kind \
+npx dev-assets capture suggest-kind \
   --content "..." --branch-name "feature/xxx"
 ```
 
@@ -116,7 +116,7 @@ python3 scripts/dev_asset_capture.py suggest-kind \
 适合一次会话末尾打包记录多类信息：
 
 ```bash
-python3 scripts/dev_asset_capture.py record \
+npx dev-assets capture record \
   --repo <repo-path> \
   --summary-json '{
     "title": "Codex resume-card 实现",

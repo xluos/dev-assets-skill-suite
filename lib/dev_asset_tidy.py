@@ -29,9 +29,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-_lib = Path(__file__).resolve().parents[3] / "lib"
-if _lib.exists() and str(_lib) not in sys.path:
-    sys.path.insert(0, str(_lib))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dev_asset_common import (
     AUTO_END,
@@ -41,8 +39,7 @@ from dev_asset_common import (
     split_sections,
 )
 
-ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
-HTML_TEMPLATE_PATH = ASSETS_DIR / "tidy_review.html"
+HTML_TEMPLATE_PATH = Path(__file__).resolve().parent / "assets" / "tidy_review.html"
 
 # Files we tidy. Keys map to dev_asset_common.asset_paths() entries.
 BRANCH_FILE_KEYS = (

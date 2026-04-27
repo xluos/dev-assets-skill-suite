@@ -195,12 +195,36 @@ function commandUi(_positional, options) {
   start({ host, port, openBrowserFlag, readOnly });
 }
 
+// Subcommands that delegate straight to the Python lib/ scripts.
+// Their CLIs (subcommands, flags) are owned by argparse on the Python
+// side, so we deliberately bypass parseArgs and forward raw argv.
+const PY_SUBCOMMAND_SCRIPTS = {
+  context: "dev_asset_context.py",
+  capture: "dev_asset_capture.py",
+  setup: "dev_asset_setup.py",
+  graduate: "dev_asset_graduate.py",
+  tidy: "dev_asset_tidy.py",
+};
+
+function commandPySubcommand(name, rawArgs) {
+  const scriptPath = packageScript("lib", PY_SUBCOMMAND_SCRIPTS[name]);
+  if (!fs.existsSync(scriptPath)) {
+    fail(`missing lib script: ${scriptPath}`);
+  }
+  runPython(scriptPath, rawArgs);
+}
+
 function printHelp() {
   process.stdout.write(`Usage:
   dev-assets hook <session-start|pre-compact|stop|session-end> [--repo PATH]
   dev-assets install-hooks <codex|claude> [--repo PATH] [--global]
   dev-assets install-hooks --all [--repo PATH] [--global]
   dev-assets ui [--port N] [--host HOST] [--no-open] [--read-only]
+  dev-assets context <show|...> [...]
+  dev-assets capture <record|show|sync-working-tree|record-head|suggest-kind|classify> [...]
+  dev-assets setup <init|merge-unsorted|mark-completed> [...]
+  dev-assets graduate <dry-run|apply|index> [...]
+  dev-assets tidy <prepare|apply> [...]
 
 Environment:
   DEV_ASSETS_ROOT defaults to ${DEFAULT_STORAGE_ROOT}
@@ -208,12 +232,19 @@ Environment:
 }
 
 function main() {
-  const { positional, options } = parseArgs(process.argv.slice(2));
-  const command = positional.shift();
+  const argv = process.argv.slice(2);
+  const command = argv[0];
   if (!command || command === "-h" || command === "--help") {
     printHelp();
     return;
   }
+  if (PY_SUBCOMMAND_SCRIPTS[command]) {
+    commandPySubcommand(command, argv.slice(1));
+    return;
+  }
+  // Legacy commands keep using the lightweight Node-side parser.
+  const { positional, options } = parseArgs(argv);
+  positional.shift();
   if (command === "hook") {
     commandHook(positional, options);
     return;

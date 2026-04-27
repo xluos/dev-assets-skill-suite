@@ -41,7 +41,7 @@ v1 graduate 要全量审核 branch 目录里所有 markdown。v2 里 capture 在
 ### Step 1: Pre-flight check
 
 ```bash
-python3 /absolute/path/to/dev-assets-graduate/scripts/dev_asset_graduate.py dry-run \
+npx dev-assets graduate dry-run \
   [--repo <repo-path>] [--branch <branch-name>]
 ```
 
@@ -81,7 +81,7 @@ python3 /absolute/path/to/dev-assets-graduate/scripts/dev_asset_graduate.py dry-
 ### Step 3: apply
 
 ```bash
-python3 /absolute/path/to/dev-assets-graduate/scripts/dev_asset_graduate.py apply \
+npx dev-assets graduate apply \
   --harvest-file /tmp/graduate-harvest.json \
   [--repo <repo-path>] [--branch <branch-name>]
 ```
@@ -95,7 +95,7 @@ python3 /absolute/path/to/dev-assets-graduate/scripts/dev_asset_graduate.py appl
 ### Step 4: 查索引
 
 ```bash
-python3 /absolute/path/to/dev-assets-graduate/scripts/dev_asset_graduate.py index
+npx dev-assets graduate index
 ```
 
 列出所有已归档分支。

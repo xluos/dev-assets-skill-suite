@@ -33,7 +33,7 @@ Tidy 是 dev-assets 套件里**已结构化记忆的定期校准入口**。
 ### Step 1: 第一次 prepare —— 拿到 entries 列表
 
 ```bash
-python3 /absolute/path/to/dev-assets-tidy/scripts/dev_asset_tidy.py prepare \
+npx dev-assets tidy prepare \
   [--repo <repo-path>] [--branch <branch-name>] \
   [--scope branch|branch+repo]
 ```
@@ -79,14 +79,14 @@ python3 /absolute/path/to/dev-assets-tidy/scripts/dev_asset_tidy.py prepare \
 重跑 prepare 注入 hints，HTML 会带颜色标签 + 理由：
 
 ```bash
-python3 .../dev_asset_tidy.py prepare \
+npx dev-assets tidy prepare \
   --hints-json '{"decisions::1::0":{"label":"STALE","reason":"..."}, ...}'
 ```
 
 或写到文件：
 
 ```bash
-python3 .../dev_asset_tidy.py prepare --hints-file /tmp/tidy-hints.json
+npx dev-assets tidy prepare --hints-file /tmp/tidy-hints.json
 ```
 
 ### Step 3: 用户在浏览器审 + 导出 plan.json
@@ -102,7 +102,7 @@ python3 .../dev_asset_tidy.py prepare --hints-file /tmp/tidy-hints.json
 ### Step 4: apply
 
 ```bash
-python3 .../dev_asset_tidy.py apply \
+npx dev-assets tidy apply \
   --plan-file ~/Downloads/tidy_plan_<ts>.json \
   [--repo <repo-path>] [--branch <branch-name>]
 ```

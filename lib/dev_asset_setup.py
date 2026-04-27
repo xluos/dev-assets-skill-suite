@@ -15,9 +15,7 @@ import json
 import sys
 from pathlib import Path
 
-_lib = Path(__file__).resolve().parents[3] / "lib"
-if _lib.exists() and str(_lib) not in sys.path:
-    sys.path.insert(0, str(_lib))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dev_asset_common import (
     ensure_branch_paths_exist,
