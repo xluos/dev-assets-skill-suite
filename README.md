@@ -162,6 +162,7 @@ Shell 包装器（`scripts/install_codex_hooks.sh`、`scripts/install_claude_hoo
 dev-assets ui                      # 随机端口 + 自动打开浏览器
 dev-assets ui --port 7878          # 固定端口
 dev-assets ui --no-open            # 只起服务，不开浏览器
+dev-assets ui --read-only          # 禁用编辑回写
 ```
 
 界面提供：
@@ -169,8 +170,9 @@ dev-assets ui --no-open            # 只起服务，不开浏览器
 - 左栏：可搜索的仓库卡片列表（显示短名 + 完整 key + 分支数）
 - 右栏：选中仓库的结构化信息（仓库级记忆文件 + 分支 pill-tab 切换 + 每个分支的 manifest 摘要和记忆文件卡片）
 - 卡片内 md 文件会渲染为 heading / 列表 / 代码块等，预览区过长会截断并提供"展开全部"弹窗
+- 弹窗内可点"编辑"直接修改 `.md` / `.json` 并保存（`Cmd/Ctrl+S` 保存，`Esc` 取消）；写入仅限存储目录内已存在的文件，`.json` 会先做语法校验再原子落盘
 
-只读界面，不会改动任何存储文件。没装全局 CLI 时同样可以 `npx -y @xluos/dev-assets-cli ui`。
+默认绑定 `127.0.0.1`，仅本机可访问。需要彻底禁用写入时加 `--read-only`。没装全局 CLI 时同样可以 `npx -y @xluos/dev-assets-cli ui`。
 
 ## 生命周期 Hook
 

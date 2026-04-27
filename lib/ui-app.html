@@ -389,6 +389,35 @@ button { font-family: inherit; }
   white-space: pre-wrap; word-break: break-word;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
+.modal .mactions { display: flex; align-items: center; gap: 6px; }
+.modal .editor {
+  width: 100%;
+  min-height: 60vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--bg);
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+.modal .editor:focus { border-color: var(--accent); }
+.modal .status {
+  font-size: 12px;
+  margin-top: 8px;
+  color: var(--fg-muted);
+  min-height: 18px;
+  word-break: break-word;
+}
+.modal .status.error { color: #cf222e; }
+.modal .status.success { color: var(--success-fg); }
+@media (prefers-color-scheme: dark) {
+  .modal .status.error { color: #ff7b72; }
+}
 
 .empty-state {
   text-align: center;
@@ -442,9 +471,17 @@ button.icon-btn:hover {
   <div class="modal">
     <header>
       <span id="modalTitle" class="mtitle mono"></span>
-      <button class="close" id="modalClose" aria-label="关闭">×</button>
+      <div class="mactions">
+        <button class="icon-btn" id="modalEdit" hidden>✎ 编辑</button>
+        <button class="icon-btn" id="modalSave" hidden>保存</button>
+        <button class="icon-btn" id="modalCancel" hidden>取消</button>
+        <button class="close" id="modalClose" aria-label="关闭">×</button>
+      </div>
     </header>
-    <div class="body"><div id="modalBody"></div></div>
+    <div class="body">
+      <div id="modalBody"></div>
+      <div class="status" id="modalStatus"></div>
+    </div>
   </div>
 </div>
 
@@ -456,6 +493,13 @@ var state = {
   selectedRepoKey: null,
   selectedBranch: null,
   fileCache: new Map(),
+  readOnly: false,
+};
+
+var modalState = {
+  relPath: null,
+  text: "",
+  editing: false,
 };
 
 function q(sel) { return document.querySelector(sel); }
@@ -810,46 +854,147 @@ function renderContent() {
   content.appendChild(grid);
 }
 
+function setModalStatus(text, level) {
+  var s = q("#modalStatus");
+  s.textContent = text || "";
+  s.className = "status" + (level ? " " + level : "");
+}
+
+function renderModalView() {
+  var body = q("#modalBody");
+  body.innerHTML = "";
+  var text = modalState.text || "";
+  var relPath = modalState.relPath || "";
+  if (!text || !text.trim()) {
+    body.appendChild(el("span", { class: "loading" }, "（空文件）"));
+    return;
+  }
+  var isMd = /\.md$/i.test(relPath);
+  if (isMd) {
+    var wrap = document.createElement("div");
+    wrap.className = "md";
+    wrap.innerHTML = renderMd(text);
+    body.appendChild(wrap);
+  } else {
+    var pre = document.createElement("pre");
+    pre.className = "raw";
+    pre.textContent = text;
+    body.appendChild(pre);
+  }
+}
+
+function renderModalEditor() {
+  var body = q("#modalBody");
+  body.innerHTML = "";
+  var ta = document.createElement("textarea");
+  ta.className = "editor mono";
+  ta.id = "modalEditor";
+  ta.value = modalState.text || "";
+  ta.spellcheck = false;
+  body.appendChild(ta);
+  // focus on next tick so the modal is fully visible
+  setTimeout(function () { ta.focus(); }, 0);
+}
+
+function updateModalButtons() {
+  var canEdit = !state.readOnly && !!modalState.relPath;
+  q("#modalEdit").hidden = !canEdit || modalState.editing;
+  q("#modalSave").hidden = !canEdit || !modalState.editing;
+  q("#modalCancel").hidden = !canEdit || !modalState.editing;
+}
+
+function enterEditMode() {
+  if (state.readOnly) return;
+  modalState.editing = true;
+  setModalStatus("");
+  renderModalEditor();
+  updateModalButtons();
+}
+
+function exitEditMode() {
+  modalState.editing = false;
+  setModalStatus("");
+  renderModalView();
+  updateModalButtons();
+}
+
+function saveModalEdit() {
+  if (!modalState.editing || !modalState.relPath) return;
+  var ta = q("#modalEditor");
+  if (!ta) return;
+  var newText = ta.value;
+  var saveBtn = q("#modalSave");
+  var cancelBtn = q("#modalCancel");
+  saveBtn.disabled = true;
+  cancelBtn.disabled = true;
+  setModalStatus("保存中…");
+  fetch("/api/file?path=" + encodeURIComponent(modalState.relPath), {
+    method: "PUT",
+    headers: { "content-type": "text/plain; charset=utf-8" },
+    body: newText,
+  }).then(function (r) {
+    if (!r.ok) {
+      return r.text().then(function (msg) {
+        throw new Error(r.status + " " + (msg || r.statusText));
+      });
+    }
+    return r.json();
+  }).then(function () {
+    modalState.text = newText;
+    state.fileCache.set(modalState.relPath, newText);
+    modalState.editing = false;
+    renderModalView();
+    updateModalButtons();
+    setModalStatus("已保存", "success");
+    // refresh tree mtime/size in background; don't reset selection
+    loadTree();
+  }).catch(function (err) {
+    setModalStatus("保存失败：" + err.message, "error");
+  }).then(function () {
+    saveBtn.disabled = false;
+    cancelBtn.disabled = false;
+  });
+}
+
 function openModal(relPath) {
+  modalState.relPath = relPath;
+  modalState.text = "";
+  modalState.editing = false;
   q("#modalTitle").textContent = relPath;
+  setModalStatus("");
+  updateModalButtons();
   var body = q("#modalBody");
   body.innerHTML = "";
   body.appendChild(el("span", { class: "loading" }, "加载中…"));
   q("#modal").classList.add("open");
   fetchFile(relPath).then(function (text) {
-    body.innerHTML = "";
-    if (!text || !text.trim()) {
-      body.appendChild(el("span", { class: "loading" }, "（空文件）"));
-      return;
-    }
-    var isMd = /\.md$/i.test(relPath);
-    if (isMd) {
-      var wrap = document.createElement("div");
-      wrap.className = "md";
-      wrap.innerHTML = renderMd(text);
-      body.appendChild(wrap);
-    } else {
-      var pre = document.createElement("pre");
-      pre.className = "raw";
-      pre.textContent = text;
-      body.appendChild(pre);
-    }
+    modalState.text = text || "";
+    renderModalView();
+    updateModalButtons();
   }).catch(function (err) {
     body.innerHTML = "";
     var pre = document.createElement("pre");
     pre.className = "raw";
     pre.textContent = "加载失败：" + err.message;
     body.appendChild(pre);
+    // disable edit on load failure
+    q("#modalEdit").hidden = true;
   });
 }
 
-function closeModal() { q("#modal").classList.remove("open"); }
+function closeModal() {
+  q("#modal").classList.remove("open");
+  modalState.relPath = null;
+  modalState.text = "";
+  modalState.editing = false;
+}
 
 function loadTree() {
   q("#meta").textContent = "加载中…";
   q("#repoList").innerHTML = '<div class="loading">加载中…</div>';
   return fetch("/api/tree").then(function (r) { return r.json(); }).then(function (data) {
     state.tree = data;
+    state.readOnly = !!data.readOnly;
     if (!data.exists) {
       q("#meta").textContent = "未找到存储目录：" + data.storageRoot;
       q("#repoList").innerHTML = "";
@@ -885,8 +1030,21 @@ q("#reload").addEventListener("click", function () {
   loadTree();
 });
 q("#modalClose").addEventListener("click", closeModal);
+q("#modalEdit").addEventListener("click", enterEditMode);
+q("#modalSave").addEventListener("click", saveModalEdit);
+q("#modalCancel").addEventListener("click", exitEditMode);
 q("#modal").addEventListener("click", function (e) { if (e.target.id === "modal") closeModal(); });
-document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(); });
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") {
+    if (modalState.editing) exitEditMode();
+    else closeModal();
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === "s" && q("#modal").classList.contains("open") && modalState.editing) {
+    e.preventDefault();
+    saveModalEdit();
+  }
+});
 
 loadTree();
 </script>

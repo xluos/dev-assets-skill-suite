@@ -191,7 +191,8 @@ function commandUi(_positional, options) {
   const host = options.host || "127.0.0.1";
   const port = options.port != null && options.port !== true ? Number(options.port) : 0;
   const openBrowserFlag = !options["no-open"];
-  start({ host, port, openBrowserFlag });
+  const readOnly = !!options["read-only"];
+  start({ host, port, openBrowserFlag, readOnly });
 }
 
 function printHelp() {
@@ -199,7 +200,7 @@ function printHelp() {
   dev-assets hook <session-start|pre-compact|stop|session-end> [--repo PATH]
   dev-assets install-hooks <codex|claude> [--repo PATH] [--global]
   dev-assets install-hooks --all [--repo PATH] [--global]
-  dev-assets ui [--port N] [--host HOST] [--no-open]
+  dev-assets ui [--port N] [--host HOST] [--no-open] [--read-only]
 
 Environment:
   DEV_ASSETS_ROOT defaults to ${DEFAULT_STORAGE_ROOT}
