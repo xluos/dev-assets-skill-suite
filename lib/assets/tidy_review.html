@@ -11,28 +11,18 @@
   --fg-subtle: #8b949e;
   --bg: #f6f8fa;
   --bg-card: #ffffff;
+  --bg-card-soft: #fbfcfd;
   --bg-hover: #f0f3f6;
   --border: #d1d9e0;
-  --border-subtle: rgba(209, 217, 224, 0.6);
+  --border-subtle: rgba(209, 217, 224, 0.55);
   --accent: #0969da;
-  --accent-fg: #ffffff;
-  --tag-bg: #eff2f5;
-  --tag-fg: #59636e;
-  --keep-bg: #dafbe1;
-  --keep-fg: #1a7f37;
-  --delete-bg: #ffe9e9;
-  --delete-fg: #c4271f;
-  --edit-bg: #fff8c5;
-  --edit-fg: #9a6700;
-  --stale-bg: #fbeed8;
-  --stale-fg: #b85d00;
-  --dup-bg: #e0d4f7;
-  --dup-fg: #5a3a9c;
-  --ok-bg: #d6f0e3;
-  --ok-fg: #1a7f37;
-  --unclear-bg: #e2e7ee;
-  --unclear-fg: #59636e;
-  --shadow: 0 1px 3px rgba(31,35,40,0.08);
+  --accept: #1a7f37;
+  --accept-bg: #dafbe1;
+  --reject: #c4271f;
+  --reject-bg: #ffe9e9;
+  --warn-bg: #fff8c5;
+  --warn-fg: #9a6700;
+  --shadow: 0 1px 3px rgba(31,35,40,0.06);
   --radius: 8px;
 }
 @media (prefers-color-scheme: dark) {
@@ -42,30 +32,21 @@
     --fg-subtle: #6e7681;
     --bg: #0d1117;
     --bg-card: #161b22;
+    --bg-card-soft: #131820;
     --bg-hover: #1c2128;
     --border: #30363d;
     --border-subtle: rgba(48, 54, 61, 0.5);
     --accent: #58a6ff;
-    --accent-fg: #0d1117;
-    --tag-bg: #262c36;
-    --tag-fg: #8b949e;
-    --keep-bg: #033d1a;
-    --keep-fg: #3fb950;
-    --delete-bg: #4d1717;
-    --delete-fg: #ff7b72;
-    --edit-bg: #4d3800;
-    --edit-fg: #eac54f;
-    --stale-bg: #5a3a14;
-    --stale-fg: #ffa657;
-    --dup-bg: #3a2868;
-    --dup-fg: #d2a8ff;
-    --ok-bg: #1a3d28;
-    --ok-fg: #3fb950;
-    --unclear-bg: #30363d;
-    --unclear-fg: #8b949e;
+    --accept: #3fb950;
+    --accept-bg: #033d1a;
+    --reject: #ff7b72;
+    --reject-bg: #4d1717;
+    --warn-bg: #4d3800;
+    --warn-fg: #eac54f;
     --shadow: 0 1px 3px rgba(0,0,0,0.4);
   }
 }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body {
@@ -74,337 +55,518 @@ body {
   background: var(--bg);
   font-size: 14px;
   line-height: 1.5;
-  padding: 20px 24px 80px;
+  padding: 18px 22px 80px;
 }
 .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
-.scope { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; word-break: break-all; }
+
+.head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px;
+  margin-bottom: 4px;
+}
+h1 { font-size: 19px; font-weight: 600; margin: 0; }
+.scope {
+  color: var(--fg-muted); font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
 .toolbar {
   position: sticky; top: 0; z-index: 10;
   background: var(--bg);
   padding: 10px 0;
+  margin: 8px 0 16px;
   border-bottom: 1px solid var(--border);
-  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-  margin-bottom: 14px;
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
 }
 .btn {
-  padding: 7px 14px;
+  padding: 6px 12px;
   border: 1px solid var(--border);
   background: var(--bg-card);
   border-radius: 6px;
   color: var(--fg);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12.5px;
   font-family: inherit;
   transition: all 0.1s;
 }
 .btn:hover { background: var(--bg-hover); }
-.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.btn.primary {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  font-weight: 600;
+}
 .btn.primary:hover { filter: brightness(0.95); }
-.btn.danger:hover { color: var(--delete-fg); border-color: var(--delete-fg); }
-.summary { color: var(--fg-muted); font-size: 12px; margin-left: auto; }
-.file-block {
+.summary {
+  margin-left: auto;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 1200px) { .grid { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1800px) { .grid { grid-template-columns: 1fr 1fr 1fr; } }
+
+.card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
-  margin-bottom: 18px;
   box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
 }
-.file-header {
-  padding: 12px 16px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border-subtle);
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 10px;
-}
-.file-header .label { font-weight: 600; font-size: 14px; }
-.file-header .count { color: var(--fg-subtle); font-size: 11px; }
-.section-block { padding: 6px 0; }
-.section-title {
-  padding: 8px 16px 6px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--fg-muted);
-  font-weight: 600;
-  border-top: 1px dashed var(--border-subtle);
-}
-.section-block:first-of-type .section-title { border-top: none; }
-.entry {
-  padding: 10px 16px;
-  border-top: 1px solid var(--border-subtle);
-  display: grid;
-  grid-template-columns: 1fr auto;
+.card.rejected { opacity: 0.55; border-style: dashed; }
+.card.accepted { border-color: var(--accept); }
+
+.card > header {
+  padding: 12px 14px 8px;
+  display: flex; align-items: flex-start; justify-content: space-between;
   gap: 12px;
-  align-items: start;
 }
-.entry:first-of-type { border-top: none; }
-.entry.placeholder .text { color: var(--fg-subtle); font-style: italic; }
-.entry.action-delete { background: var(--delete-bg); }
-.entry.action-edit { background: var(--edit-bg); }
-.entry .text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 13px;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  line-height: 1.55;
+.card .title { font-weight: 600; font-size: 14px; line-height: 1.4; }
+.card .pid {
+  display: inline-block; margin-right: 6px;
+  color: var(--fg-subtle); font-size: 11px;
+  font-family: ui-monospace, monospace;
 }
-.hint {
-  display: inline-block;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.hint.STALE { background: var(--stale-bg); color: var(--stale-fg); }
-.hint.DUP { background: var(--dup-bg); color: var(--dup-fg); }
-.hint.OK { background: var(--ok-bg); color: var(--ok-fg); }
-.hint.UNCLEAR { background: var(--unclear-bg); color: var(--unclear-fg); }
-.hint-reason {
-  display: block;
-  color: var(--fg-muted);
-  font-size: 11px;
-  margin-top: 4px;
-  font-style: italic;
-}
-.actions { display: flex; gap: 4px; flex-wrap: wrap; }
-.actions button {
-  padding: 4px 9px;
-  font-size: 11px;
+.toggle { display: flex; gap: 4px; flex-shrink: 0; }
+.toggle button {
   border: 1px solid var(--border);
   background: var(--bg-card);
   border-radius: 5px;
-  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 11px;
   font-family: inherit;
+  cursor: pointer;
   color: var(--fg-muted);
   transition: all 0.1s;
 }
-.actions button:hover { background: var(--bg-hover); color: var(--fg); }
-.actions button.active.keep { background: var(--keep-bg); color: var(--keep-fg); border-color: var(--keep-fg); }
-.actions button.active.delete { background: var(--delete-bg); color: var(--delete-fg); border-color: var(--delete-fg); }
-.actions button.active.edit { background: var(--edit-bg); color: var(--edit-fg); border-color: var(--edit-fg); }
-.editor {
-  grid-column: 1 / -1;
-  margin-top: 8px;
-  width: 100%;
-  min-height: 80px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-card);
-  color: var(--fg);
-  font-size: 12px;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  resize: vertical;
+.toggle button:hover { background: var(--bg-hover); color: var(--fg); }
+.toggle button.on.accept { background: var(--accept-bg); color: var(--accept); border-color: var(--accept); font-weight: 600; }
+.toggle button.on.reject { background: var(--reject-bg); color: var(--reject); border-color: var(--reject); font-weight: 600; }
+
+.card .reason {
+  padding: 0 14px 8px;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
-.editor:focus { outline: none; border-color: var(--accent); }
+.card .impact {
+  padding: 8px 14px 10px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--bg-card-soft);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.impact .row { display: flex; gap: 8px; align-items: flex-start; }
+.impact .badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.3px;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  flex-shrink: 0;
+}
+.impact .desc { color: var(--fg); }
+.details { border-top: 1px solid var(--border-subtle); }
+.details summary {
+  padding: 8px 14px;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-card-soft);
+}
+.details summary:hover { color: var(--fg); }
+.details[open] summary { border-bottom: 1px solid var(--border-subtle); }
+.entry-list {
+  margin: 0;
+  padding: 8px 14px 12px 28px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--fg);
+  word-break: break-word;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.entry-list li { margin: 2px 0; }
+.entry-list .file-tag {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--fg-subtle);
+  font-size: 10.5px;
+}
+
+.unproposed {
+  margin-top: 22px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.unproposed > summary {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg-card-soft);
+  list-style: none;
+}
+.unproposed > summary::-webkit-details-marker { display: none; }
+.unproposed > summary::before { content: "▸ "; color: var(--fg-subtle); }
+.unproposed[open] > summary::before { content: "▾ "; }
+.unproposed[open] > summary { border-bottom: 1px solid var(--border-subtle); }
+.unproposed .file-block {
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 12px;
+}
+.unproposed .file-block:last-child { border-bottom: none; }
+.unproposed .file-label {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  margin-bottom: 4px;
+}
+.unproposed .uplus {
+  margin: 0; padding-left: 18px;
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--fg);
+  word-break: break-word;
+}
+.unproposed .uplus li { margin: 3px 0; }
+.unproposed .uplus li .extra-action {
+  margin-left: 8px;
+  font-size: 10.5px;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--bg-card);
+  user-select: none;
+}
+.unproposed .uplus li .extra-action.on {
+  background: var(--reject-bg); color: var(--reject); border-color: var(--reject);
+}
+
 .notes {
   margin-top: 18px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
-  padding: 14px 16px;
-  box-shadow: var(--shadow);
+  padding: 12px 14px;
 }
 .notes label { font-size: 12px; color: var(--fg-muted); display: block; margin-bottom: 6px; font-weight: 600; }
 .notes textarea {
-  width: 100%; min-height: 70px;
-  padding: 8px 10px;
+  width: 100%; min-height: 60px;
+  padding: 7px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   resize: vertical;
 }
-.notes textarea:focus { outline: none; border-color: var(--accent); }
+
 .guide {
   font-size: 12px;
   color: var(--fg-muted);
-  margin-top: 22px;
-  padding: 12px 16px;
+  margin-top: 18px;
+  padding: 10px 14px;
   background: var(--bg-card);
   border: 1px dashed var(--border);
   border-radius: var(--radius);
-  line-height: 1.7;
+  line-height: 1.65;
 }
-.guide code { font-family: ui-monospace, monospace; background: var(--tag-bg); padding: 1px 5px; border-radius: 3px; font-size: 11.5px; }
+.guide code { font-family: ui-monospace, monospace; background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 11.5px; }
+.empty {
+  padding: 14px;
+  color: var(--fg-muted);
+  text-align: center;
+  font-size: 12.5px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
 </style>
 </head>
 <body>
 
-<h1>dev-assets tidy review</h1>
-<p class="scope mono" id="scope-label">__SCOPE_LABEL_PLACEHOLDER__</p>
+<div class="head">
+  <h1>dev-assets tidy review</h1>
+  <span class="scope" id="scope-label">__SCOPE_LABEL_PLACEHOLDER__</span>
+</div>
 
 <div class="toolbar">
-  <button class="btn" onclick="bulkSet('keep')">全部 keep</button>
-  <button class="btn" onclick="bulkSet('delete')">全部 delete</button>
-  <button class="btn" onclick="bulkApplyHintSuggested()">按 hint 建议（STALE/DUP→delete）</button>
+  <button class="btn" onclick="bulkSet(true)">全部 accept</button>
+  <button class="btn" onclick="bulkSet(false)">全部 reject</button>
   <button class="btn primary" onclick="exportPlan()">导出 plan.json</button>
   <span class="summary" id="summary"></span>
 </div>
 
-<div id="files"></div>
+<div id="proposals" class="grid"></div>
+
+<details class="unproposed" id="unproposed">
+  <summary id="unproposed-summary">未被任何 proposal 覆盖的条目</summary>
+  <div id="unproposed-body"></div>
+</details>
 
 <div class="notes">
-  <label for="notes">备注（可选，留给 agent 看）</label>
-  <textarea id="notes" placeholder="比如：这次我重点清了 v1 残留；XX 那条我改写了原因；下次 tidy 该看下 progress.md 那段..."></textarea>
+  <label for="notes">备注（可选，写给 agent 看）</label>
+  <textarea id="notes" placeholder="例：这次跳过了 X 因为它还在跑；下次 tidy 该重点看 Y..."></textarea>
 </div>
 
 <div class="guide">
   <strong>使用说明</strong><br>
-  · 每条 entry 三个动作：<code>keep</code>（保留）/ <code>delete</code>（删除）/ <code>edit</code>（改写）<br>
-  · 选 <code>edit</code> 会展开 textarea；改完留在那里就行，导出时会带上<br>
-  · agent 标的 hint（<span class="hint STALE">STALE</span> <span class="hint DUP">DUP</span> <span class="hint OK">OK</span> <span class="hint UNCLEAR">UNCLEAR</span>）只是参考，你可以推翻<br>
-  · 点"导出 plan.json" → 文件下载到 Downloads → 告诉 agent 路径，它会读取并应用 + 自动备份原文件
+  · 主视图是 <strong>proposal 卡片</strong> —— 每张卡是一个&quot;事项&quot;，agent 已经把相关条目聚合好<br>
+  · 每张卡片右上角 <code>accept</code> / <code>reject</code> 切换；展开 <code>查看影响 entries</code> 看具体动了哪些 entry / section / 文件<br>
+  · 默认每张卡都是 accept。一眼扫完，不同意的点 reject 即可<br>
+  · 漏网之鱼：底部&quot;未提议&quot;折叠区可看 agent 没聚合的 entry，里面提供单条&quot;标 delete&quot;按钮<br>
+  · 审完点蓝色&quot;导出 plan.json&quot; → 文件下载到 Downloads → 告诉 agent 路径继续 apply（apply 永远先备份）
 </div>
 
 <script>
 "use strict";
 
-const TIDY_DATA = __TIDY_DATA_PLACEHOLDER__;
-const state = {};  // entry_id -> {action, new_text}
-const allIds = [];
+const TIDY = __TIDY_DATA_PLACEHOLDER__;
 
-function entryId(fileKey, secIdx, entryIdx) {
-  return fileKey + "::" + secIdx + "::" + entryIdx;
-}
+const proposalState = {};
+const extraActions = {};
+const allFiles = TIDY.files || [];
+const allProposals = TIDY.proposals || [];
+
+(function init() {
+  for (const p of allProposals) proposalState[p.id] = "accept";
+})();
 
 function escapeHtml(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function render() {
-  const root = document.getElementById("files");
-  root.innerHTML = "";
-  for (const f of TIDY_DATA.files) {
-    const fb = document.createElement("div");
-    fb.className = "file-block";
-    let entryCount = 0;
-    for (const s of f.sections) entryCount += s.entries.length;
-    fb.innerHTML = `
-      <div class="file-header">
-        <span class="label mono">${escapeHtml(f.label)}</span>
-        <span class="count">${entryCount} 条</span>
-      </div>
-    `;
+function entryById(eid) {
+  for (const f of allFiles) {
     for (const s of f.sections) {
-      const sb = document.createElement("div");
-      sb.className = "section-block";
-      sb.innerHTML = `<div class="section-title">${escapeHtml(s.title)}</div>`;
       for (const e of s.entries) {
-        const id = entryId(f.file_key, s.section_idx, e.entry_idx);
-        if (!state[id]) state[id] = { action: "keep", new_text: null };
-        if (!allIds.includes(id)) allIds.push(id);
-        const hint = (TIDY_DATA.hints || {})[id];
-        const hintHtml = hint && hint.label
-          ? `<span class="hint ${hint.label}">${hint.label}</span>${hint.reason ? `<span class="hint-reason">${escapeHtml(hint.reason)}</span>` : ""}`
-          : "";
-        const entryDiv = document.createElement("div");
-        entryDiv.className = "entry" + (e.is_placeholder ? " placeholder" : "");
-        entryDiv.dataset.id = id;
-        entryDiv.innerHTML = `
-          <div>
-            ${hintHtml}
-            <div class="text">${escapeHtml(e.text)}</div>
-          </div>
-          <div class="actions" data-id="${id}">
-            <button data-act="keep" onclick="setAction('${id}', 'keep')">keep</button>
-            <button data-act="delete" onclick="setAction('${id}', 'delete')">delete</button>
-            <button data-act="edit" onclick="setAction('${id}', 'edit')">edit</button>
-          </div>
-        `;
-        sb.appendChild(entryDiv);
+        const id = f.file_key + "::" + s.section_idx + "::" + e.entry_idx;
+        if (id === eid) return { f: f, s: s, e: e };
       }
-      fb.appendChild(sb);
     }
-    root.appendChild(fb);
   }
-  for (const id of allIds) refreshEntryUi(id);
-  refreshSummary();
+  return null;
 }
 
-function refreshEntryUi(id) {
-  const cur = state[id];
-  const entryDiv = document.querySelector(`.entry[data-id="${id}"]`);
-  if (!entryDiv) return;
-  entryDiv.classList.remove("action-delete", "action-edit");
-  if (cur.action === "delete") entryDiv.classList.add("action-delete");
-  if (cur.action === "edit") entryDiv.classList.add("action-edit");
-  for (const btn of entryDiv.querySelectorAll(".actions button")) {
-    btn.classList.toggle("active", btn.dataset.act === cur.action);
-    btn.classList.toggle(btn.dataset.act, btn.dataset.act === cur.action);
+function sectionByIdx(file_key, section_idx) {
+  const f = allFiles.find(function (x) { return x.file_key === file_key; });
+  if (!f) return null;
+  return f.sections.find(function (s) { return s.section_idx === section_idx; });
+}
+
+function summarizeAction(action) {
+  if (action.type === "reset-file") {
+    return { badge: "RESET FILE", desc: "重置 " + action.file_key + ".md 回 v2 模板（清掉所有内容包括 section 骨架）" };
   }
-  let editor = entryDiv.querySelector("textarea.editor");
-  if (cur.action === "edit") {
-    if (!editor) {
-      editor = document.createElement("textarea");
-      editor.className = "editor";
-      editor.placeholder = "改写后的内容（保留为单条 entry；多行会作为续行）";
-      const initial = cur.new_text != null ? cur.new_text : (entryDiv.querySelector(".text").textContent || "");
-      editor.value = initial;
-      editor.oninput = () => { state[id].new_text = editor.value; };
-      entryDiv.appendChild(editor);
-      state[id].new_text = editor.value;
+  if (action.type === "delete-section") {
+    const s = sectionByIdx(action.file_key, action.section_idx);
+    const title = s ? s.title : "section[" + action.section_idx + "]";
+    const cnt = s ? s.entries.length : "?";
+    return { badge: "DELETE SECTION", desc: action.file_key + ".md → 整段删除 \"" + title + "\"（含 " + cnt + " 条）" };
+  }
+  if (action.type === "delete-entries") {
+    return { badge: "DELETE", desc: "共 " + (action.ids || []).length + " 条 entry" };
+  }
+  if (action.type === "edit-entries") {
+    return { badge: "EDIT", desc: "共 " + (action.edits || []).length + " 条 entry 改写" };
+  }
+  return { badge: action.type || "?", desc: JSON.stringify(action) };
+}
+
+function entriesPreview(action) {
+  const ids = [];
+  if (action.type === "delete-entries") for (const id of (action.ids || [])) ids.push(id);
+  if (action.type === "edit-entries") for (const e of (action.edits || [])) ids.push(e.id);
+  if (action.type === "delete-section") {
+    const s = sectionByIdx(action.file_key, action.section_idx);
+    if (s) for (const e of s.entries) ids.push(action.file_key + "::" + action.section_idx + "::" + e.entry_idx);
+  }
+  if (action.type === "reset-file") {
+    const f = allFiles.find(function (x) { return x.file_key === action.file_key; });
+    if (f) for (const s of f.sections) for (const e of s.entries) {
+      ids.push(action.file_key + "::" + s.section_idx + "::" + e.entry_idx);
     }
-  } else if (editor) {
-    editor.remove();
-    state[id].new_text = null;
+  }
+  const items = [];
+  for (const eid of ids) {
+    const ref = entryById(eid);
+    if (ref) {
+      items.push("<li><span class=\"file-tag\">" + escapeHtml(ref.f.label) + " · " + escapeHtml(ref.s.title) + "</span>" + escapeHtml(ref.e.text) + "</li>");
+    } else {
+      items.push("<li class=\"file-tag\">" + escapeHtml(eid) + "</li>");
+    }
+  }
+  return items.length
+    ? "<ul class=\"entry-list\">" + items.join("") + "</ul>"
+    : "<div class=\"empty\">（无具体 entry 引用）</div>";
+}
+
+function renderProposals() {
+  const root = document.getElementById("proposals");
+  root.innerHTML = "";
+  if (!allProposals.length) {
+    root.innerHTML = "<div class=\"empty\">没有 proposal — agent 应在 prepare 时通过 --proposals-json 注入</div>";
+    return;
+  }
+  for (const p of allProposals) {
+    const cur = proposalState[p.id] || "accept";
+    const card = document.createElement("div");
+    card.className = "card " + (cur === "accept" ? "accepted" : "rejected");
+    card.dataset.pid = p.id;
+
+    const impactRows = (p.actions || []).map(function (a) {
+      const s = summarizeAction(a);
+      return "<div class=\"row\"><span class=\"badge\">" + escapeHtml(s.badge) + "</span><span class=\"desc\">" + escapeHtml(s.desc) + "</span></div>";
+    }).join("");
+
+    const previewBlocks = (p.actions || []).map(function (a) { return entriesPreview(a); }).join("");
+
+    card.innerHTML =
+      "<header>" +
+        "<div class=\"title\"><span class=\"pid\">" + escapeHtml(p.id) + "</span>" + escapeHtml(p.title) + "</div>" +
+        "<div class=\"toggle\">" +
+          "<button data-act=\"accept\" class=\"" + (cur === "accept" ? "on accept" : "") + "\">accept</button>" +
+          "<button data-act=\"reject\" class=\"" + (cur === "reject" ? "on reject" : "") + "\">reject</button>" +
+        "</div>" +
+      "</header>" +
+      (p.reason ? "<div class=\"reason\">" + escapeHtml(p.reason) + "</div>" : "") +
+      "<div class=\"impact\">" + impactRows + "</div>" +
+      "<details class=\"details\">" +
+        "<summary>查看影响 entries</summary>" +
+        previewBlocks +
+      "</details>";
+
+    for (const btn of card.querySelectorAll(".toggle button")) {
+      btn.addEventListener("click", function () {
+        proposalState[p.id] = btn.dataset.act;
+        renderProposals();
+        refreshSummary();
+      });
+    }
+    root.appendChild(card);
   }
 }
 
-function setAction(id, act) {
-  state[id].action = act;
-  refreshEntryUi(id);
-  refreshSummary();
-}
-
-function bulkSet(act) {
-  for (const id of allIds) state[id].action = act;
-  for (const id of allIds) refreshEntryUi(id);
-  refreshSummary();
-}
-
-function bulkApplyHintSuggested() {
-  const hints = TIDY_DATA.hints || {};
-  for (const id of allIds) {
-    const h = hints[id];
-    if (h && (h.label === "STALE" || h.label === "DUP")) state[id].action = "delete";
-    else if (h && h.label === "OK") state[id].action = "keep";
+function renderUnproposed() {
+  const covered = new Set();
+  for (const p of allProposals) {
+    for (const a of (p.actions || [])) {
+      if (a.type === "delete-entries") for (const id of (a.ids || [])) covered.add(id);
+      if (a.type === "edit-entries") for (const e of (a.edits || [])) covered.add(e.id);
+      if (a.type === "delete-section") {
+        const s = sectionByIdx(a.file_key, a.section_idx);
+        if (s) for (const e of s.entries) covered.add(a.file_key + "::" + a.section_idx + "::" + e.entry_idx);
+      }
+      if (a.type === "reset-file") {
+        const f = allFiles.find(function (x) { return x.file_key === a.file_key; });
+        if (f) for (const s of f.sections) for (const e of s.entries) {
+          covered.add(a.file_key + "::" + s.section_idx + "::" + e.entry_idx);
+        }
+      }
+    }
   }
-  for (const id of allIds) refreshEntryUi(id);
+
+  const body = document.getElementById("unproposed-body");
+  body.innerHTML = "";
+  let totalUnproposed = 0;
+  for (const f of allFiles) {
+    const items = [];
+    for (const s of f.sections) {
+      for (const e of s.entries) {
+        const id = f.file_key + "::" + s.section_idx + "::" + e.entry_idx;
+        if (covered.has(id)) continue;
+        const action = extraActions[id];
+        const placeholder = e.is_placeholder ? "<span class=\"file-tag\">[占位]</span>" : "";
+        items.push(
+          "<li data-eid=\"" + id + "\">" +
+            "<span class=\"file-tag\">[" + escapeHtml(s.title) + "]</span>" +
+            placeholder + escapeHtml(e.text) +
+            "<span class=\"extra-action " + (action === "delete" ? "on" : "") + "\" onclick=\"toggleExtra('" + id + "')\">" + (action === "delete" ? "✓ 标 delete" : "标 delete") + "</span>" +
+          "</li>"
+        );
+      }
+    }
+    if (!items.length) continue;
+    totalUnproposed += items.length;
+    const block = document.createElement("div");
+    block.className = "file-block";
+    block.innerHTML =
+      "<div class=\"file-label\">" + escapeHtml(f.label) + "</div>" +
+      "<ul class=\"uplus\">" + items.join("") + "</ul>";
+    body.appendChild(block);
+  }
+  document.getElementById("unproposed-summary").textContent =
+    "未被任何 proposal 覆盖的条目（" + totalUnproposed + " 条，默认全部 keep）";
+  if (!totalUnproposed) {
+    body.innerHTML = "<div class=\"empty\" style=\"margin: 12px;\">所有条目都已被 proposal 覆盖</div>";
+  }
+}
+
+window.toggleExtra = function (id) {
+  if (extraActions[id] === "delete") delete extraActions[id];
+  else extraActions[id] = "delete";
+  renderUnproposed();
+  refreshSummary();
+};
+
+function bulkSet(accept) {
+  const v = accept ? "accept" : "reject";
+  for (const p of allProposals) proposalState[p.id] = v;
+  renderProposals();
   refreshSummary();
 }
+
+window.bulkSet = bulkSet;
 
 function refreshSummary() {
-  let k = 0, d = 0, e = 0;
-  for (const id of allIds) {
-    const a = state[id].action;
-    if (a === "keep") k++;
-    else if (a === "delete") d++;
-    else if (a === "edit") e++;
+  let a = 0, r = 0;
+  for (const v of Object.values(proposalState)) {
+    if (v === "accept") a++;
+    else if (v === "reject") r++;
   }
+  const e = Object.keys(extraActions).length;
   document.getElementById("summary").textContent =
-    `共 ${allIds.length} 条 · keep ${k} · delete ${d} · edit ${e}`;
+    allProposals.length + " 个 proposal · accept " + a + " · reject " + r +
+    (e ? " · 额外 " + e + " 条 delete" : "");
 }
 
 function exportPlan() {
+  const accepted = [];
   const actions = [];
-  for (const id of allIds) {
-    const a = state[id];
-    if (a.action === "keep") continue;  // omit keeps to keep plan.json compact
-    const entry = { id: id, action: a.action };
-    if (a.action === "edit") entry.new_text = a.new_text || "";
-    actions.push(entry);
+  for (const p of allProposals) {
+    if (proposalState[p.id] !== "accept") continue;
+    accepted.push(p.id);
+    for (const a of (p.actions || [])) actions.push(a);
+  }
+  for (const eid in extraActions) {
+    if (extraActions[eid] === "delete") actions.push({ id: eid, action: "delete" });
   }
   const plan = {
-    tidy_id: TIDY_DATA.scope.generated_at,
-    scope: { include_repo: !!TIDY_DATA.scope.include_repo },
+    tidy_id: TIDY.scope.generated_at,
+    scope: { include_repo: !!TIDY.scope.include_repo },
+    accepted_proposals: accepted,
     actions: actions,
     notes: document.getElementById("notes").value || "",
   };
@@ -412,14 +574,18 @@ function exportPlan() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `tidy_plan_${TIDY_DATA.scope.generated_at}.json`;
+  a.download = "tidy_plan_" + TIDY.scope.generated_at + ".json";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
 
-render();
+window.exportPlan = exportPlan;
+
+renderProposals();
+renderUnproposed();
+refreshSummary();
 </script>
 </body>
 </html>

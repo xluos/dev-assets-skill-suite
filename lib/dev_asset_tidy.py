@@ -37,9 +37,38 @@ from dev_asset_common import (
     ensure_branch_paths_exist,
     join_sections,
     split_sections,
+    template_decisions,
+    template_glossary,
+    template_overview,
+    template_pending_promotion,
+    template_progress,
+    template_repo_decisions,
+    template_repo_glossary,
+    template_repo_overview,
+    template_risks,
+    template_unsorted,
 )
 
 HTML_TEMPLATE_PATH = Path(__file__).resolve().parent / "assets" / "tidy_review.html"
+
+# Map file_key -> callable that produces a fresh v2 template body. Used by
+# the reset-file proposal action when an entry-level cleanup is too coarse
+# (e.g. v1 → v2 left H3 skeleton sections that tidy can't surgically remove).
+def _template_for(file_key, branch_name, repo_name):
+    table = {
+        "overview": lambda: template_overview(branch_name),
+        "decisions": lambda: template_decisions(branch_name),
+        "progress": lambda: template_progress(branch_name),
+        "risks": lambda: template_risks(branch_name),
+        "glossary": lambda: template_glossary(branch_name),
+        "unsorted": lambda: template_unsorted(),
+        "pending_promotion": lambda: template_pending_promotion(),
+        "repo_overview": lambda: template_repo_overview(repo_name),
+        "repo_decisions": lambda: template_repo_decisions(repo_name),
+        "repo_glossary": lambda: template_repo_glossary(repo_name),
+    }
+    fn = table.get(file_key)
+    return fn() if fn else None
 
 # Files we tidy. Keys map to dev_asset_common.asset_paths() entries.
 BRANCH_FILE_KEYS = (
@@ -58,7 +87,8 @@ REPO_FILE_KEYS = (
 )
 
 VALID_HINTS = {"STALE", "DUP", "OK", "UNCLEAR"}
-VALID_ACTIONS = {"keep", "delete", "edit"}
+VALID_ENTRY_ACTIONS = {"keep", "delete", "edit"}
+VALID_PROPOSAL_TYPES = {"delete-entries", "delete-section", "reset-file", "edit-entries"}
 
 
 def _now_stamp():
@@ -195,13 +225,59 @@ def _validate_hints(hints):
     return cleaned
 
 
-def _render_html(files, hints, scope_meta, output_path):
-    """Inject scan + hints into the HTML template and write to disk."""
+def _validate_proposals(raw):
+    """Each proposal: {id, title, reason, actions: [...]}.
+    Each action variant: delete-entries / delete-section / reset-file /
+    edit-entries. We only sanitise here — actual semantics are interpreted
+    at apply time after the user accepts via the HTML."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("proposals must be a JSON array")
+    cleaned = []
+    seen_ids = set()
+    for i, p in enumerate(raw):
+        if not isinstance(p, dict):
+            raise ValueError(f"proposal #{i} must be an object")
+        pid = (p.get("id") or f"p{i}").strip()
+        if pid in seen_ids:
+            raise ValueError(f"duplicate proposal id {pid!r}")
+        seen_ids.add(pid)
+        title = (p.get("title") or "").strip()
+        reason = (p.get("reason") or "").strip()
+        actions = p.get("actions") or []
+        if not title:
+            raise ValueError(f"proposal {pid} missing title")
+        if not actions:
+            raise ValueError(f"proposal {pid} has no actions")
+        cleaned_actions = []
+        for j, a in enumerate(actions):
+            if not isinstance(a, dict):
+                raise ValueError(f"proposal {pid} action #{j} must be an object")
+            atype = (a.get("type") or "").strip()
+            if atype not in VALID_PROPOSAL_TYPES:
+                raise ValueError(
+                    f"proposal {pid} action #{j} has invalid type {atype!r}; "
+                    f"must be one of {sorted(VALID_PROPOSAL_TYPES)}"
+                )
+            cleaned_actions.append(a)
+        cleaned.append({
+            "id": pid,
+            "title": title,
+            "reason": reason,
+            "actions": cleaned_actions,
+        })
+    return cleaned
+
+
+def _render_html(files, hints, proposals, scope_meta, output_path):
+    """Inject scan + hints + proposals into the HTML template and write to disk."""
     template = HTML_TEMPLATE_PATH.read_text(encoding="utf-8")
     payload = {
         "scope": scope_meta,
         "files": files,
         "hints": hints,
+        "proposals": proposals,
     }
     payload_json = json.dumps(payload, ensure_ascii=False, indent=2)
     rendered = template.replace("__TIDY_DATA_PLACEHOLDER__", payload_json)
@@ -223,6 +299,12 @@ def command_prepare(args):
     elif args.hints_file:
         hints = _validate_hints(json.loads(Path(args.hints_file).read_text(encoding="utf-8")))
 
+    proposals = []
+    if args.proposals_json:
+        proposals = _validate_proposals(json.loads(args.proposals_json))
+    elif args.proposals_file:
+        proposals = _validate_proposals(json.loads(Path(args.proposals_file).read_text(encoding="utf-8")))
+
     scope_meta = {
         "repo_root": str(repo_root),
         "repo_key": repo_key,
@@ -235,7 +317,7 @@ def command_prepare(args):
     review_dir = branch_dir / "tidy_review"
     review_dir.mkdir(parents=True, exist_ok=True)
     out_path = review_dir / f"review_{scope_meta['generated_at']}.html"
-    _render_html(files, hints, scope_meta, out_path)
+    _render_html(files, hints, proposals, scope_meta, out_path)
 
     entry_index = []
     for entry_id, f, s, e in _flatten_entries(files):
@@ -247,6 +329,17 @@ def command_prepare(args):
             "is_placeholder": e["is_placeholder"],
         })
 
+    section_index = []
+    for f in files:
+        for s in f["sections"]:
+            section_index.append({
+                "file_key": f["file_key"],
+                "file": f["label"],
+                "section_idx": s["section_idx"],
+                "title": s["title"],
+                "entry_count": len(s["entries"]),
+            })
+
     print(json.dumps({
         "mode": "prepare",
         "review_html": str(out_path),
@@ -254,11 +347,14 @@ def command_prepare(args):
         "scope": scope_meta,
         "entry_count": len(entry_index),
         "entries": entry_index,
+        "section_count": len(section_index),
+        "sections": section_index,
+        "proposal_count": len(proposals),
         "next_steps": [
-            "1) Read the entries above; for each ID assign a hint (STALE/DUP/OK/UNCLEAR + short reason).",
-            "2) Re-run prepare with --hints-json '{\"<id>\":{\"label\":\"STALE\",\"reason\":\"...\"}, ...}' to bake hints into the HTML.",
-            "3) Tell the user to open the printed open_url in a browser, mark keep/delete/edit per entry, then click Export Plan.",
-            "4) When the user signals they downloaded plan.json, run: dev_asset_tidy.py apply --plan-file <path>.",
+            "1) Read entries + sections above and decide what semantic 'fixes' to propose (e.g. 'reset unsorted.md', 'drop the demo asset list in overview', 'remove section X').",
+            "2) Re-run prepare with --proposals-json or --proposals-file to bake proposal cards into the HTML.",
+            "3) Tell the user to open open_url; default each proposal accept/reject; expand to inspect; export plan.json.",
+            "4) When plan.json is downloaded, run: dev-assets tidy apply --plan-file <path>.",
         ],
     }, ensure_ascii=False, indent=2))
     return 0
@@ -370,6 +466,22 @@ def _rewrite_file(path, plan_actions_by_section):
     path.write_text(join_sections(prefix, new_sections), encoding="utf-8")
 
 
+def _delete_sections(path, section_indices):
+    """Drop the listed top-level (`## `) sections from a file."""
+    content = path.read_text(encoding="utf-8")
+    prefix, sections = split_sections(content)
+    drop = set(section_indices)
+    kept = [(t, b) for i, (t, b) in enumerate(sections) if i not in drop]
+    path.write_text(join_sections(prefix, kept), encoding="utf-8")
+
+
+def _reset_file(path, file_key, branch_name, repo_name):
+    body = _template_for(file_key, branch_name, repo_name)
+    if body is None:
+        raise ValueError(f"no v2 template registered for file_key {file_key!r}")
+    path.write_text(body, encoding="utf-8")
+
+
 def command_apply(args):
     repo_root, branch_name, branch_key, storage_root, repo_key, repo_dir, branch_dir, paths = ensure_branch_paths_exist(
         args.repo, args.context_dir, args.branch
@@ -379,26 +491,80 @@ def command_apply(args):
     actions = plan.get("actions") or []
     include_repo = (plan.get("scope") or {}).get("include_repo", False)
 
-    # Group actions by file/section for efficient rewrite.
-    grouped = {}  # file_key -> section_idx -> entry_idx -> action
+    # Bucket the actions:
+    #   reset_files  : file_keys to fully reset (highest precedence)
+    #   delete_sections: file_key -> set(section_idx)
+    #   entry_actions: file_key -> section_idx -> entry_idx -> {action, new_text}
+    reset_files = set()
+    delete_sections = {}
+    entry_actions = {}
     invalid = []
+
     for item in actions:
+        # New action types use a "type" field; legacy entry-level actions
+        # use "id" + "action". Distinguish by which key is present.
+        atype = (item.get("type") or "").strip()
+        if atype:
+            if atype == "reset-file":
+                fk = item.get("file_key", "")
+                if fk not in paths:
+                    invalid.append({"action": item, "reason": f"unknown file_key {fk!r}"})
+                    continue
+                reset_files.add(fk)
+                continue
+            if atype == "delete-section":
+                fk = item.get("file_key", "")
+                if fk not in paths:
+                    invalid.append({"action": item, "reason": f"unknown file_key {fk!r}"})
+                    continue
+                try:
+                    sidx = int(item.get("section_idx"))
+                except (TypeError, ValueError):
+                    invalid.append({"action": item, "reason": "section_idx must be int"})
+                    continue
+                delete_sections.setdefault(fk, set()).add(sidx)
+                continue
+            if atype in ("delete-entries", "edit-entries"):
+                # Either form expands to a list of {id, action[, new_text]}.
+                ids = item.get("ids") or []
+                edits = item.get("edits") or []
+                pairs = [(i, "delete", None) for i in ids] + [
+                    (e.get("id"), "edit", e.get("new_text")) for e in edits
+                ]
+                for eid, kind, new_text in pairs:
+                    parsed = _parse_entry_id(eid)
+                    if not parsed:
+                        invalid.append({"id": eid, "reason": "malformed id"})
+                        continue
+                    fk, sidx, eidx = parsed
+                    if fk not in paths:
+                        invalid.append({"id": eid, "reason": f"unknown file_key {fk!r}"})
+                        continue
+                    entry_actions.setdefault(fk, {}).setdefault(sidx, {})[eidx] = {
+                        "action": kind,
+                        "new_text": new_text,
+                    }
+                continue
+            invalid.append({"action": item, "reason": f"unknown type {atype!r}"})
+            continue
+
+        # Legacy entry-level form.
         eid = item.get("id") or ""
         kind = (item.get("action") or "").strip().lower()
-        if kind not in VALID_ACTIONS:
+        if kind not in VALID_ENTRY_ACTIONS:
             invalid.append({"id": eid, "reason": f"unknown action {kind!r}"})
             continue
-        try:
-            file_key, section_idx_str, entry_idx_str = eid.split("::")
-            section_idx = int(section_idx_str)
-            entry_idx = int(entry_idx_str)
-        except (ValueError, AttributeError):
+        parsed = _parse_entry_id(eid)
+        if not parsed:
             invalid.append({"id": eid, "reason": "malformed id"})
             continue
-        if file_key not in paths and not (file_key.startswith("repo_") and file_key in paths):
-            invalid.append({"id": eid, "reason": f"unknown file_key {file_key!r}"})
+        fk, sidx, eidx = parsed
+        if fk not in paths:
+            invalid.append({"id": eid, "reason": f"unknown file_key {fk!r}"})
             continue
-        grouped.setdefault(file_key, {}).setdefault(section_idx, {})[entry_idx] = {
+        if kind == "keep":
+            continue
+        entry_actions.setdefault(fk, {}).setdefault(sidx, {})[eidx] = {
             "action": kind,
             "new_text": item.get("new_text"),
         }
@@ -407,13 +573,41 @@ def command_apply(args):
     backup_dir, _ = _backup_scope(branch_dir, paths, include_repo, stamp)
 
     rewritten = []
-    for file_key, sec_actions in grouped.items():
-        path = paths.get(file_key)
+    # Apply reset-file first (other ops on the same file are then redundant).
+    for fk in reset_files:
+        path = paths[fk]
+        try:
+            _reset_file(path, fk, branch_name, repo_key.rsplit("-", 1)[0])
+            rewritten.append({"file_key": fk, "path": str(path), "op": "reset-file"})
+        except Exception as exc:
+            invalid.append({"file_key": fk, "op": "reset-file", "reason": str(exc)})
+        # Drop any other ops queued for this file — reset wins.
+        delete_sections.pop(fk, None)
+        entry_actions.pop(fk, None)
+
+    # Then delete-section per file (one rewrite per file).
+    for fk, sidx_set in delete_sections.items():
+        path = paths.get(fk)
         if not path or not path.exists():
-            invalid.append({"file_key": file_key, "reason": "file missing at apply time"})
+            invalid.append({"file_key": fk, "op": "delete-section", "reason": "file missing"})
+            continue
+        _delete_sections(path, sidx_set)
+        rewritten.append({"file_key": fk, "path": str(path), "op": f"delete-sections:{sorted(sidx_set)}"})
+        # Entry actions on a deleted section are no-ops; prune to keep counts honest.
+        if fk in entry_actions:
+            for sidx in sidx_set:
+                entry_actions[fk].pop(sidx, None)
+            if not entry_actions[fk]:
+                entry_actions.pop(fk, None)
+
+    # Finally entry-level actions.
+    for fk, sec_actions in entry_actions.items():
+        path = paths.get(fk)
+        if not path or not path.exists():
+            invalid.append({"file_key": fk, "reason": "file missing at apply time"})
             continue
         _rewrite_file(path, sec_actions)
-        rewritten.append({"file_key": file_key, "path": str(path)})
+        rewritten.append({"file_key": fk, "path": str(path), "op": "entry-actions"})
 
     summary_path = branch_dir / "tidy_review" / f"summary_{stamp}.md"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
@@ -423,12 +617,16 @@ def command_apply(args):
         f"- branch: `{branch_name}`",
         f"- include_repo: `{include_repo}`",
         f"- backup: `{backup_dir}`",
+        f"- accepted proposals: {len(plan.get('accepted_proposals') or [])}",
         f"- actions submitted: {len(actions)}",
         f"- files rewritten: {len(rewritten)}",
         f"- invalid items: {len(invalid)}",
     ]
     if plan.get("notes"):
         summary_lines += ["", "## notes", "", plan["notes"]]
+    if rewritten:
+        summary_lines += ["", "## rewritten", ""]
+        summary_lines += [f"- {r['file_key']} ({r['op']})" for r in rewritten]
     if invalid:
         summary_lines += ["", "## invalid", ""]
         summary_lines += [f"- {json.dumps(v, ensure_ascii=False)}" for v in invalid]
@@ -447,6 +645,19 @@ def command_apply(args):
     return 0
 
 
+def _parse_entry_id(eid):
+    """Return (file_key, section_idx, entry_idx) or None on bad input."""
+    if not isinstance(eid, str):
+        return None
+    parts = eid.split("::")
+    if len(parts) != 3:
+        return None
+    try:
+        return parts[0], int(parts[1]), int(parts[2])
+    except ValueError:
+        return None
+
+
 def _add_common_args(p):
     p.add_argument("--repo", default=".", help="Path inside the target Git repository")
     p.add_argument("--context-dir", help="User-home storage root. Defaults to ~/.dev-assets/repos")
@@ -457,12 +668,20 @@ def main():
     parser = argparse.ArgumentParser(description="Review and tidy existing dev-assets memory entries.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_prep = sub.add_parser("prepare", help="Scan scope, render review.html (optionally with agent hints)")
+    p_prep = sub.add_parser("prepare", help="Scan scope, render review.html (with optional hints + proposals)")
     _add_common_args(p_prep)
     p_prep.add_argument("--scope", choices=("branch", "branch+repo"), default="branch")
     hint_group = p_prep.add_mutually_exclusive_group()
     hint_group.add_argument("--hints-json", help="Inline JSON object keyed by entry id with {label, reason}")
     hint_group.add_argument("--hints-file", help="Path to JSON file with the same shape as --hints-json")
+    proposal_group = p_prep.add_mutually_exclusive_group()
+    proposal_group.add_argument(
+        "--proposals-json",
+        help="Inline JSON array of proposals: [{id, title, reason, actions:[...]}]. "
+             "Action types: delete-entries (ids:[...]), delete-section (file_key, section_idx), "
+             "reset-file (file_key), edit-entries (edits:[{id, new_text}]).",
+    )
+    proposal_group.add_argument("--proposals-file", help="Path to JSON file with the same shape as --proposals-json")
 
     p_apply = sub.add_parser("apply", help="Apply a downloaded plan.json (with backup snapshot)")
     _add_common_args(p_apply)
