@@ -45,52 +45,52 @@
 
   <!-- ============== READ PATH (TOP) ============== -->
   <text x="70" y="158" font-size="13" font-weight="700" fill="#0891b2" letter-spacing="3">①  读取（无 skill）</text>
-  <line x1="220" y1="153" x2="1360" y2="153" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
+  <line x1="320" y1="153" x2="1360" y2="153" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
 
   <!-- SessionStart hook -->
-  <rect x="80" y="175" width="540" height="120" rx="14" fill="url(#hook-grad)" filter="url(#shadow)"/>
-  <circle cx="120" cy="208" r="18" fill="white" opacity="0.25"/>
-  <text x="120" y="215" font-size="18" fill="white" text-anchor="middle">⚡</text>
-  <text x="155" y="207" font-size="17" font-weight="700" fill="white">SessionStart hook</text>
-  <text x="155" y="227" font-size="11" fill="#dbeafe">每次会话开始自动跑：注入摘要 + 完整文件路径列表</text>
-  <line x1="155" y1="237" x2="600" y2="237" stroke="#bfdbfe" stroke-width="0.5" opacity="0.4"/>
-  <text x="100" y="258" font-size="11" fill="#eff6ff">▸ 跑 capture sync-working-tree 刷新 progress.md auto 区</text>
-  <text x="100" y="276" font-size="11" fill="#eff6ff">▸ 抽 14 个 section（progress / risks / decisions / glossary / overview）</text>
-  <text x="100" y="294" font-size="11" fill="#eff6ff">▸ footer 列绝对路径 → AI 直接 Read，无需 skill 中转</text>
+  <rect x="80" y="175" width="540" height="135" rx="14" fill="url(#hook-grad)" filter="url(#shadow)"/>
+  <circle cx="120" cy="210" r="18" fill="white" opacity="0.25"/>
+  <text x="120" y="217" font-size="18" fill="white" text-anchor="middle">⚡</text>
+  <text x="155" y="208" font-size="17" font-weight="700" fill="white">SessionStart hook</text>
+  <text x="155" y="230" font-size="11" fill="#dbeafe">每次会话开始自动跑：注入摘要 + 完整文件路径列表</text>
+  <line x1="155" y1="240" x2="600" y2="240" stroke="#bfdbfe" stroke-width="0.5" opacity="0.4"/>
+  <text x="100" y="262" font-size="11" fill="#eff6ff">▸ 跑 capture sync-working-tree 刷新 progress.md auto 区</text>
+  <text x="100" y="281" font-size="11" fill="#eff6ff">▸ 抽 14 个 section（progress / risks / decisions / glossary / overview）</text>
+  <text x="100" y="300" font-size="11" fill="#eff6ff">▸ footer 列绝对路径 → AI 直接 Read，无需 skill 中转</text>
 
   <!-- Read tool drill-down -->
-  <rect x="660" y="175" width="320" height="120" rx="14" fill="white" stroke="#06b6d4" stroke-width="2" filter="url(#shadow)"/>
-  <text x="680" y="207" font-size="15" font-weight="700" fill="#0e7490">Read tool drill-down</text>
-  <line x1="680" y1="217" x2="950" y2="217" stroke="#cffafe" stroke-width="1"/>
-  <text x="680" y="240" font-size="11" fill="#475569">注入未覆盖 / 段尾标 ↪ 截断时</text>
-  <text x="680" y="258" font-size="11" fill="#64748b">→ AI 按 footer 列出的绝对路径直接 Read</text>
-  <text x="680" y="276" font-size="11" fill="#64748b">→ 归档分支：grep -r 派 Task 子 agent</text>
+  <rect x="660" y="175" width="320" height="135" rx="14" fill="white" stroke="#06b6d4" stroke-width="2" filter="url(#shadow)"/>
+  <text x="680" y="208" font-size="15" font-weight="700" fill="#0e7490">Read tool drill-down</text>
+  <line x1="680" y1="218" x2="950" y2="218" stroke="#cffafe" stroke-width="1"/>
+  <text x="680" y="244" font-size="11" fill="#475569">注入未覆盖 / 段尾标 ↪ 截断时</text>
+  <text x="680" y="266" font-size="11" fill="#64748b">→ AI 按 footer 列出的绝对路径直接 Read</text>
+  <text x="680" y="288" font-size="11" fill="#64748b">→ 归档分支：grep -r 派 Task 子 agent</text>
 
   <!-- CLI fallback -->
-  <rect x="1020" y="175" width="340" height="120" rx="14" fill="white" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" filter="url(#shadow)"/>
-  <text x="1040" y="207" font-size="14" font-weight="700" fill="#475569">CLI fallback (脚本 / 手动)</text>
-  <line x1="1040" y1="217" x2="1340" y2="217" stroke="#e5e7eb" stroke-width="1"/>
-  <text x="1040" y="240" font-size="11" fill="#475569" font-family="ui-monospace,monospace">dev-memory context show</text>
-  <text x="1040" y="258" font-size="11" fill="#475569" font-family="ui-monospace,monospace">dev-memory context sync</text>
-  <text x="1040" y="277" font-size="10" font-style="italic" fill="#94a3b8">命令保留，仅不再以 skill 形式暴露</text>
+  <rect x="1020" y="175" width="340" height="135" rx="14" fill="white" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3" filter="url(#shadow)"/>
+  <text x="1040" y="208" font-size="14" font-weight="700" fill="#475569">CLI fallback (脚本 / 手动)</text>
+  <line x1="1040" y1="218" x2="1340" y2="218" stroke="#e5e7eb" stroke-width="1"/>
+  <text x="1040" y="244" font-size="11" fill="#475569" font-family="ui-monospace,monospace">dev-memory context show</text>
+  <text x="1040" y="266" font-size="11" fill="#475569" font-family="ui-monospace,monospace">dev-memory context sync</text>
+  <text x="1040" y="290" font-size="10" font-style="italic" fill="#94a3b8">命令保留，仅不再以 skill 形式暴露</text>
 
-  <polyline points="350,295 350,335 1170,335 1170,415" fill="none" stroke="#0891b2" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arr-cyan)" opacity="0.55"/>
+  <polyline points="350,310 350,348 1170,348 1170,415" fill="none" stroke="#0891b2" stroke-width="1.5" stroke-dasharray="3,3" marker-end="url(#arr-cyan)" opacity="0.55"/>
 
   <!-- ============== TRIGGER LAYER ============== -->
   <text x="70" y="370" font-size="13" font-weight="700" fill="#059669" letter-spacing="3">②  触发 → Skills</text>
-  <line x1="220" y1="365" x2="1360" y2="365" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
+  <line x1="290" y1="365" x2="1360" y2="365" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
 
-  <rect x="80" y="385" width="280" height="68" rx="34" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" filter="url(#shadow)"/>
-  <circle cx="120" cy="419" r="18" fill="#f59e0b"/>
-  <text x="120" y="426" font-size="16" fill="white" text-anchor="middle">💬</text>
-  <text x="152" y="415" font-size="15" font-weight="700" fill="#1e293b">用户诉求</text>
-  <text x="152" y="435" font-size="11" fill="#64748b">"记一下" / "归档" / "整理一下"</text>
+  <rect x="80" y="395" width="280" height="68" rx="34" fill="#fef3c7" stroke="#f59e0b" stroke-width="2" filter="url(#shadow)"/>
+  <circle cx="120" cy="429" r="18" fill="#f59e0b"/>
+  <text x="120" y="436" font-size="16" fill="white" text-anchor="middle">💬</text>
+  <text x="152" y="425" font-size="15" font-weight="700" fill="#1e293b">用户诉求</text>
+  <text x="152" y="445" font-size="11" fill="#64748b">"记一下" / "归档" / "整理一下"</text>
 
-  <text x="380" y="425" font-size="12" fill="#94a3b8">→ 各 skill 自己 description 触发，无 router</text>
+  <text x="380" y="435" font-size="12" fill="#94a3b8">→ 各 skill 自己 description 触发，无 router</text>
 
   <!-- ============== SKILL SUITE (4 cards) ============== -->
   <text x="70" y="500" font-size="13" font-weight="700" fill="#475569" letter-spacing="3">③  Skill 套件 · 4 working skills（写入 / 流程）</text>
-  <line x1="610" y1="495" x2="1360" y2="495" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
+  <line x1="690" y1="495" x2="1360" y2="495" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
 
   <text x="220" y="525" font-size="12" font-weight="700" fill="#059669" letter-spacing="1">⤻  写入  ·  during work</text>
   <text x="780" y="525" font-size="12" font-weight="700" fill="#b45309" letter-spacing="1" text-anchor="middle">⚙  维护  ·  housekeeping</text>
@@ -139,17 +139,13 @@
   <text x="1120" y="664" font-size="10" fill="#64748b">• 必须显式触发</text>
   <text x="1120" y="710" font-size="10" font-style="italic" fill="#94a3b8">"merge 完了清一下"</text>
 
-  <!-- arrows trigger → skills -->
-  <polyline points="360,419 270,419 270,540" fill="none" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr-slate)"/>
-  <polyline points="360,419 625,419 625,540" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-slate)"/>
-  <polyline points="360,419 925,419 925,540" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-slate)"/>
-  <polyline points="360,419 1225,419 1225,540" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-slate)"/>
+  <!-- (trigger → skills 箭头已移除：positional 布局 + "无 router" 文字提示已经表达分发关系，箭头会与 ③ section header 重叠) -->
 
   <!-- ============== BRANCH LIFECYCLE CLI ============== -->
   <text x="70" y="775" font-size="13" font-weight="700" fill="#7c3aed" letter-spacing="3">④  分支记忆生命周期 · CLI</text>
-  <line x1="380" y1="770" x2="1360" y2="770" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
+  <line x1="430" y1="770" x2="1360" y2="770" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
 
-  <rect x="80" y="790" width="1280" height="92" rx="12" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="80" y="790" width="1280" height="100" rx="12" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.5" filter="url(#shadow)"/>
   <text x="105" y="818" font-size="14" font-weight="700" fill="#6d28d9" font-family="ui-monospace,monospace">dev-memory branch</text>
   <text x="270" y="818" font-size="12" fill="#475569">交互式分支记忆操作（type-ahead 候选 · 默认 abort + --backup / --force 三档冲突）</text>
   <line x1="105" y1="828" x2="1340" y2="828" stroke="#e9d5ff" stroke-width="1"/>
@@ -165,7 +161,7 @@
   <!-- ============== STORAGE LAYER ============== -->
   <text x="70" y="918" font-size="13" font-weight="700" fill="#475569" letter-spacing="3">⑤  存储</text>
   <text x="160" y="918" font-size="13" font-weight="600" fill="#64748b" font-family="ui-monospace,monospace">~/.dev-memory/repos/&lt;repo-key&gt;/</text>
-  <line x1="540" y1="913" x2="1360" y2="913" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
+  <line x1="490" y1="913" x2="1360" y2="913" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3,4"/>
 
   <rect x="80" y="935" width="1280" height="80" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
 
