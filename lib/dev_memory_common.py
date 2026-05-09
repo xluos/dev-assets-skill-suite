@@ -1248,28 +1248,29 @@ def collect_git_facts(repo_root, branch_name, _storage_root=None):
 
 
 def merged_focus_areas(new_paths, existing, limit=None):
-    """Compute focus_areas, merging in previously known focus dirs.
+    """Compute focus_areas, mixing existing focus dirs with the new working
+    tree signal.
 
-    `existing` is the focus_areas list stored on the branch manifest from a
-    prior sync. We:
+    Algorithm (matches user's mental model — "specific signals over wide
+    parents, stale entries kept ranked low until limit prunes them"):
 
-      1. Drop any existing dir that no longer has any new path under it
-         (transient activity like an IDE writing `.vscode/settings.json`
-         once should not stay in focus_areas forever).
-      2. Drop any new path already covered by a still-active existing dir
-         (since that signal is already represented).
-      3. Re-cluster the remaining new paths' parents together with the
-         active existing dirs (each old dir gets weight 1 — equal footing
-         with a freshly-observed parent).
-      4. After roll-up, collapse parent/child duplicates: if buckets contain
-         both a parent dir and one of its descendants (e.g. roll-up produced
-         `apps` while `apps/x/y/prompts` was kept as a legacy entry), keep
-         only the parent and add the child's weight to it.
-
-    This means stable "long-running" focus areas survive across SessionStart
-    cycles even when the working tree has been committed clean, while newly
-    activated areas can still surface — and stale or fully-covered entries
-    are pruned out instead of accumulating forever.
+      1. Internally dedupe `existing`: when a wider parent dir (e.g. `apps`)
+         coexists with its specific descendant (e.g. `apps/x/y/prompts`),
+         drop the wider parent. The wider parent is almost always a leftover
+         from an earlier roll-up that swallowed too much; the specific
+         descendants carry the real signal.
+      2. Score every surviving existing dir by how many `new_paths` it
+         actually covers (0 means stale, e.g. `.vscode` after a one-shot
+         IDE write — but we keep it in the ranking, only the final limit
+         truncation prunes it from the bottom).
+      3. Compute `uncovered` = paths not under any surviving existing dir.
+      4. Roll up the uncovered paths' immediate parents into ≤ remaining
+         budget buckets, **forbidding roll-up into any ancestor of an
+         existing dir** so the output cannot regenerate the over-wide
+         parent we just removed in step 1.
+      5. Merge existing weights with the rolled-up uncovered buckets,
+         sort by weight desc, truncate to `limit`. Stale 0-weight entries
+         naturally sit at the bottom and get culled when buckets > limit.
     """
     if limit is None:
         limit = FOCUS_AREA_LIMIT
@@ -1281,60 +1282,76 @@ def merged_focus_areas(new_paths, existing, limit=None):
             return "/" not in path
         return path == dir_ or path.startswith(dir_ + "/")
 
-    # (1) Prune existing dirs that have no active paths under them anymore.
-    # Without this, legacy entries persist forever once they enter the list.
-    live_existing = [d for d in existing if any(_is_under(p, d) for p in new_paths)]
+    def _drop_wider_parents(items):
+        items = list(dict.fromkeys(items))  # dedupe preserving order
+        return [d for d in items if not any(other != d and _is_under(other, d) for other in items)]
 
-    uncovered = [p for p in new_paths if not any(_is_under(p, d) for d in live_existing)]
+    # (1) Drop wider parent entries inside existing.
+    deduped_existing = _drop_wider_parents(existing)
 
-    buckets = Counter()
+    # (2) Real coverage weight per surviving existing dir.
+    existing_weights = {d: sum(1 for p in new_paths if _is_under(p, d)) for d in deduped_existing}
+
+    # (3) Paths not yet covered by any existing dir.
+    uncovered = [p for p in new_paths if not any(_is_under(p, d) for d in deduped_existing)]
+
+    # (4) Forbidden roll-up targets = any ancestor of a surviving existing
+    # dir. Without this guard the roll-up of `uncovered` could produce a
+    # parent like `apps` and we'd be back where we started.
+    forbidden_ancestors = set()
+    for d in deduped_existing:
+        if d in ("", "."):
+            continue
+        parent = Path(d).parent
+        while True:
+            key = parent.as_posix()
+            if key in ("", "."):
+                break
+            forbidden_ancestors.add(key)
+            if parent == parent.parent:
+                break
+            parent = parent.parent
+
+    # Reserve slots for existing entries; uncovered fills the rest.
+    remaining_budget = max(1, limit - len(existing_weights))
+
+    new_buckets = Counter()
     for p in uncovered:
-        buckets[_initial_parent(p)] += 1
-    for d in live_existing:
-        if d not in buckets:
-            buckets[d] = 1  # baseline weight for legacy entries
+        new_buckets[_initial_parent(p)] += 1
 
-    while len(buckets) > limit:
+    while len(new_buckets) > remaining_budget:
         proposals = {}
-        for key, count in buckets.items():
+        for key, count in new_buckets.items():
             if not _can_roll_up(key):
                 continue
             new_key = _rolled_up(key)
+            if new_key in forbidden_ancestors:
+                # Rolling up here would regenerate a wide parent we just
+                # dropped — leave the deeper buckets where they are.
+                continue
             entry = proposals.setdefault(new_key, [0, []])
             entry[0] += count
             entry[1].append(key)
         if not proposals:
+            # No legal roll-up move left; live with the current bucket count
+            # — final ranking + limit will handle the rest.
             break
+
         def score(item):
             new_key, (sum_count, _) = item
             depth = len(Path(new_key).parts) if new_key not in ("", ".") else 0
             return (sum_count, depth, new_key)
+
         winner_key, (winner_count, originals) = max(proposals.items(), key=score)
         for k in originals:
-            buckets.pop(k)
-        buckets[winner_key] = buckets.get(winner_key, 0) + winner_count
+            new_buckets.pop(k)
+        new_buckets[winner_key] = new_buckets.get(winner_key, 0) + winner_count
 
-    # (4) Collapse parent/child duplicates. Roll-up may produce a parent key
-    # while a legacy child key survives via baseline weight; without this
-    # step both end up in the output and the parent line is redundant noise.
-    keys_by_depth = sorted(
-        buckets.keys(),
-        key=lambda k: (len(Path(k).parts) if k not in ("", ".") else 0, k),
-    )
-    dropped = set()
-    for parent in keys_by_depth:
-        if parent in dropped:
-            continue
-        for child in keys_by_depth:
-            if child == parent or child in dropped:
-                continue
-            if _is_under(child, parent):
-                buckets[parent] += buckets[child]
-                dropped.add(child)
-    for k in dropped:
-        buckets.pop(k, None)
+    # (5) Merge + rank + truncate.
+    all_weights = Counter(existing_weights)
+    all_weights.update(new_buckets)
 
-    ranked = sorted(buckets.items(), key=lambda kv: (-kv[1], kv[0]))
+    ranked = sorted(all_weights.items(), key=lambda kv: (-kv[1], kv[0]))
     return [k for k, _ in ranked[:limit]]
 
 
