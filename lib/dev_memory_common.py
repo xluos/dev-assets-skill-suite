@@ -1347,12 +1347,54 @@ def merged_focus_areas(new_paths, existing, limit=None):
             new_buckets.pop(k)
         new_buckets[winner_key] = new_buckets.get(winner_key, 0) + winner_count
 
-    # (5) Merge + rank + truncate.
-    all_weights = Counter(existing_weights)
-    all_weights.update(new_buckets)
+    # (5) Quota partition so a flurry of new hot spots can't eject the
+    # user's long-running focus dirs in one shot.
+    #
+    #   - existing_quota = ceil(limit/2)  → reserved for existing active dirs
+    #   - new_quota      = floor(limit/2) → reserved for fresh buckets
+    #   - either side can borrow unused slots from the other (so we never
+    #     leave a slot empty just to enforce the partition).
+    #   - stale existing (weight=0) is a fallback that only fills slots left
+    #     after both quotas are settled — they ride at the bottom and get
+    #     pruned naturally.
+    existing_active = sorted(
+        ((d, w) for d, w in existing_weights.items() if w > 0),
+        key=lambda kv: (-kv[1], kv[0]),
+    )
+    existing_stale = sorted(
+        (d for d, w in existing_weights.items() if w == 0),
+    )
+    new_items = sorted(new_buckets.items(), key=lambda kv: (-kv[1], kv[0]))
 
-    ranked = sorted(all_weights.items(), key=lambda kv: (-kv[1], kv[0]))
-    return [k for k, _ in ranked[:limit]]
+    existing_quota = (limit + 1) // 2  # ceil(limit/2)
+    new_quota = limit - existing_quota
+
+    existing_take = list(existing_active[:existing_quota])
+    new_take = list(new_items[:new_quota])
+
+    # Lend leftover slots across the partition before falling back to stale.
+    existing_overflow = existing_quota - len(existing_take)
+    new_overflow = new_quota - len(new_take)
+    if existing_overflow > 0:
+        new_take.extend(new_items[new_quota:new_quota + existing_overflow])
+    if new_overflow > 0:
+        existing_take.extend(existing_active[existing_quota:existing_quota + new_overflow])
+
+    final = []
+    seen = set()
+    for d, _ in existing_take + new_take:
+        if d in seen:
+            continue
+        seen.add(d)
+        final.append(d)
+    for d in existing_stale:
+        if len(final) >= limit:
+            break
+        if d in seen:
+            continue
+        seen.add(d)
+        final.append(d)
+    return final[:limit]
 
 
 def build_auto_block(facts):
