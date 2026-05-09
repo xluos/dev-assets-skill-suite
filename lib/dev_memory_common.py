@@ -418,9 +418,16 @@ def ensure_manifest(path, defaults):
         write_json(path, defaults)
         return defaults
 
+    # Fill missing keys only — never overwrite existing values. The previous
+    # `merged.update(defaults)` order silently clobbered stateful fields like
+    # `focus_areas`, `scope_summary`, `last_seen_head` with empty defaults
+    # whenever ensure_branch_paths_exist ran (every capture / sync), making
+    # downstream merge_focus_areas always see `existing=[]`.
     merged = dict(existing)
-    merged.update(defaults)
-    merged["initialized_at"] = existing.get("initialized_at", defaults["initialized_at"])
+    for key, value in defaults.items():
+        if key not in merged:
+            merged[key] = value
+    merged["initialized_at"] = existing.get("initialized_at", defaults.get("initialized_at"))
     # Preserve setup_completed if already true — re-running init shouldn't
     # reset user's setup progress.
     if existing.get("setup_completed"):
@@ -1246,15 +1253,23 @@ def merged_focus_areas(new_paths, existing, limit=None):
     `existing` is the focus_areas list stored on the branch manifest from a
     prior sync. We:
 
-      1. Drop any new path already covered by an existing dir (since that
-         signal is already represented).
-      2. Re-cluster the remaining new paths' parents together with the
-         existing dirs (each old dir gets weight 1 — equal footing with a
-         freshly-observed parent).
+      1. Drop any existing dir that no longer has any new path under it
+         (transient activity like an IDE writing `.vscode/settings.json`
+         once should not stay in focus_areas forever).
+      2. Drop any new path already covered by a still-active existing dir
+         (since that signal is already represented).
+      3. Re-cluster the remaining new paths' parents together with the
+         active existing dirs (each old dir gets weight 1 — equal footing
+         with a freshly-observed parent).
+      4. After roll-up, collapse parent/child duplicates: if buckets contain
+         both a parent dir and one of its descendants (e.g. roll-up produced
+         `apps` while `apps/x/y/prompts` was kept as a legacy entry), keep
+         only the parent and add the child's weight to it.
 
     This means stable "long-running" focus areas survive across SessionStart
     cycles even when the working tree has been committed clean, while newly
-    activated areas can still surface.
+    activated areas can still surface — and stale or fully-covered entries
+    are pruned out instead of accumulating forever.
     """
     if limit is None:
         limit = FOCUS_AREA_LIMIT
@@ -1266,12 +1281,16 @@ def merged_focus_areas(new_paths, existing, limit=None):
             return "/" not in path
         return path == dir_ or path.startswith(dir_ + "/")
 
-    uncovered = [p for p in new_paths if not any(_is_under(p, d) for d in existing)]
+    # (1) Prune existing dirs that have no active paths under them anymore.
+    # Without this, legacy entries persist forever once they enter the list.
+    live_existing = [d for d in existing if any(_is_under(p, d) for p in new_paths)]
+
+    uncovered = [p for p in new_paths if not any(_is_under(p, d) for d in live_existing)]
 
     buckets = Counter()
     for p in uncovered:
         buckets[_initial_parent(p)] += 1
-    for d in existing:
+    for d in live_existing:
         if d not in buckets:
             buckets[d] = 1  # baseline weight for legacy entries
 
@@ -1294,6 +1313,26 @@ def merged_focus_areas(new_paths, existing, limit=None):
         for k in originals:
             buckets.pop(k)
         buckets[winner_key] = buckets.get(winner_key, 0) + winner_count
+
+    # (4) Collapse parent/child duplicates. Roll-up may produce a parent key
+    # while a legacy child key survives via baseline weight; without this
+    # step both end up in the output and the parent line is redundant noise.
+    keys_by_depth = sorted(
+        buckets.keys(),
+        key=lambda k: (len(Path(k).parts) if k not in ("", ".") else 0, k),
+    )
+    dropped = set()
+    for parent in keys_by_depth:
+        if parent in dropped:
+            continue
+        for child in keys_by_depth:
+            if child == parent or child in dropped:
+                continue
+            if _is_under(child, parent):
+                buckets[parent] += buckets[child]
+                dropped.add(child)
+    for k in dropped:
+        buckets.pop(k, None)
 
     ranked = sorted(buckets.items(), key=lambda kv: (-kv[1], kv[0]))
     return [k for k, _ in ranked[:limit]]
